@@ -139,9 +139,10 @@ public class LevelManager : MonoBehaviour
     int _totalRailsInLevel;
     int _litRailCount;
 
-    // Campaign totals for the game-complete screen
+    // Campaign totals for the game-complete screen + live HUD score
     int _campaignTotalStrokes;
     int _campaignTotalStars;
+    int _campaignTotalScore; // cumulative sum of all completed-level scores this session
     public const string PrefLevelStars = "BucaStars_L"; // + index
     public const string PrefLevelScore = "BucaScore_L"; // + index
 
@@ -353,10 +354,10 @@ public class LevelManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Computes a live running-score estimate based on current state
-    /// (strokes so far, time left, rails lit) and animates the HUD
-    /// counter toward it. Gives the player real-time feedback — the
-    /// score climbs as they light rails and ticks down as time passes.
+    /// Computes a live running-score estimate and shows the campaign
+    /// total (finished levels + current-level projection). This matches
+    /// what the leaderboard would display — gives consistent feedback
+    /// with the server-side ranking.
     /// </summary>
     void TickLiveScore()
     {
@@ -366,14 +367,16 @@ public class LevelManager : MonoBehaviour
         if (levelSettings != null && _currentIndex < levelSettings.Length && levelSettings[_currentIndex] != null)
             starStrokes = levelSettings[_currentIndex].threeStarStrokes;
 
-        // Estimate current score as if the player won right now with no combo.
+        // Project what this level would score if finished right now.
         var est = ScoreCalculator.Calculate(
             Mathf.Max(1, _shotCount), _timeRemaining, _timeLimit,
             _litRailCount, _totalRailsInLevel,
             starStrokes, 0);
 
-        // Smooth the displayed value so it doesn't jitter every frame.
-        float target = est.total;
+        // Cumulative total = finished levels + current projection.
+        // This matches the leaderboard's running-total score format.
+        int target = _campaignTotalScore + est.total;
+
         float smooth = Mathf.SmoothDamp(_displayedScore, target, ref _scoreDisplayVel, 0.25f);
         _displayedScore = Mathf.RoundToInt(smooth);
 
@@ -484,9 +487,11 @@ public class LevelManager : MonoBehaviour
         _shotCount = 0;
         _puckWasStopped = true;
         if (shotCounter != null) shotCounter.text = "STROKES  0";
-        _displayedScore = 0;
+        // Don't reset displayed score to 0 — keep campaign-total continuity.
+        // TickLiveScore immediately recomputes with the new level's data.
+        _displayedScore = _campaignTotalScore;
         _scoreDisplayVel = 0f;
-        if (scoreDisplay != null) scoreDisplay.text = "SCORE  0";
+        if (scoreDisplay != null) scoreDisplay.text = $"SCORE  {_campaignTotalScore}";
 
         // Count rails + reset any lit state from previous playthrough
         var rails = _currentInstance.GetComponentsInChildren<RailLight>(true);
@@ -611,9 +616,10 @@ public class LevelManager : MonoBehaviour
                              "carried over via DontDestroyOnLoad from MainMenu.");
         }
 
-        // Track campaign totals for the end screen.
+        // Track campaign totals for the end screen + live HUD.
         _campaignTotalStrokes += _shotCount;
         _campaignTotalStars   += score.stars;
+        _campaignTotalScore   += score.total;
 
         // Shrink puck into hole
         float shrinkDur = 0.35f;

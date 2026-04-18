@@ -82,12 +82,38 @@ public class LeaderboardPanel : MonoBehaviour
     {
         // Fade in + scale bounce
         if (titleText != null) titleText.text = "LEADERBOARD";
+
+        // Only show the "YOUR RANK" header when the player is NOT in the
+        // visible list (e.g., ranked #57 but only top 10 shown). Otherwise
+        // the highlighted row in the list already tells them their rank,
+        // and the header becomes a duplicate.
+        bool meInList = false;
+        if (entries != null)
+        {
+            foreach (var e in entries)
+            {
+                if (!string.IsNullOrEmpty(e.playerName) && !string.IsNullOrEmpty(myName)
+                    && e.playerName.Equals(myName, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    meInList = true;
+                    break;
+                }
+            }
+        }
         if (myRankText != null)
         {
-            // "UNRANKED" is friendlier than "#0" when the player has no score yet.
-            string rankStr = myRank > 0 ? $"#{myRank}" : "UNRANKED";
-            string nameStr = string.IsNullOrEmpty(myName) ? "YOU" : myName.ToUpper();
-            myRankText.text = $"{nameStr}   {rankStr}   SCORE  {myScore}";
+            if (meInList)
+            {
+                // Hide the redundant header when the player is already in the list.
+                myRankText.text = "";
+                var c = myRankText.color; c.a = 0f; myRankText.color = c;
+            }
+            else
+            {
+                string rankStr = myRank > 0 ? $"#{myRank}" : "UNRANKED";
+                string nameStr = string.IsNullOrEmpty(myName) ? "YOU" : myName.ToUpper();
+                myRankText.text = $"{nameStr}   {rankStr}   SCORE  {myScore}";
+            }
         }
         if (continueHintText != null)
         {

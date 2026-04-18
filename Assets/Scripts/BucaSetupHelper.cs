@@ -988,60 +988,32 @@ public class BucaSetupHelper : MonoBehaviour
         rrt.anchoredPosition = new Vector2(0f, -130f);
         rrt.sizeDelta = new Vector2(500f, 70f);
 
-        // Bar background — dark translucent strip
-        var barBgGO = new GameObject("BarBg", typeof(RectTransform));
-        barBgGO.transform.SetParent(rootGO.transform, false);
-        var bgrt = (RectTransform)barBgGO.transform;
-        bgrt.anchorMin = new Vector2(0f, 0f);
-        bgrt.anchorMax = new Vector2(1f, 0.45f);
-        bgrt.offsetMin = Vector2.zero;
-        bgrt.offsetMax = Vector2.zero;
-        var barBg = barBgGO.AddComponent<Image>();
-        barBg.color = new Color(0.08f, 0.04f, 0.12f, 0.7f);
-        barBg.raycastTarget = false;
-
-        // Bar fill — bright, horizontal filled
-        var barGO = new GameObject("BarFill", typeof(RectTransform));
-        barGO.transform.SetParent(rootGO.transform, false);
-        var brt = (RectTransform)barGO.transform;
-        brt.anchorMin = new Vector2(0f, 0f);
-        brt.anchorMax = new Vector2(1f, 0.45f);
-        brt.offsetMin = new Vector2(2f, 2f);
-        brt.offsetMax = new Vector2(-2f, -2f);
-        var barFill = barGO.AddComponent<Image>();
-        barFill.color = new Color(1f, 1f, 1f, 0.9f);
-        barFill.type = Image.Type.Filled;
-        barFill.fillMethod = Image.FillMethod.Horizontal;
-        barFill.fillOrigin = 0; // left to right
-        barFill.fillAmount = 1f;
-        barFill.raycastTarget = false;
-
-        // Timer text — shows seconds remaining
+        // Timer text — shows seconds remaining, centered in the root.
+        // No fill bar — the text's scale + color animations carry the
+        // visual feedback on their own (see TimerDisplay).
         var textGO = new GameObject("TimerText", typeof(RectTransform));
         textGO.transform.SetParent(rootGO.transform, false);
         var trt = (RectTransform)textGO.transform;
-        trt.anchorMin = new Vector2(0f, 0.4f);
-        trt.anchorMax = new Vector2(1f, 1f);
+        trt.anchorMin = Vector2.zero;
+        trt.anchorMax = Vector2.one;
         trt.offsetMin = Vector2.zero;
         trt.offsetMax = Vector2.zero;
         var tmp = textGO.AddComponent<TextMeshProUGUI>();
         tmp.text = "30";
-        tmp.fontSize = 42;
+        tmp.fontSize = 56;
         tmp.fontStyle = FontStyles.Bold;
         tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = new Color(1f, 1f, 1f, 0.9f);
-        tmp.outlineWidth = 0.12f;
+        tmp.color = new Color(1f, 1f, 1f, 0.95f);
+        tmp.outlineWidth = 0.15f;
         tmp.outlineColor = new Color(0f, 0f, 0f, 0.85f);
         tmp.raycastTarget = false;
 
         // Wire component
         var td = rootGO.AddComponent<TimerDisplay>();
         td.timerText = tmp;
-        td.timerBar = barFill;
-        td.timerBarBg = barBg;
 
         levelManager.timerDisplay = td;
-        Debug.Log("[BucaSetupHelper] ✔ TimerDisplay created and assigned to LevelManager.timerDisplay");
+        Debug.Log("[BucaSetupHelper] ✔ TimerDisplay (text-only) created and assigned to LevelManager.timerDisplay");
     }
 
     // ═══════════════════════════════════════════════════════════
