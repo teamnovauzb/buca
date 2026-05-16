@@ -17,6 +17,8 @@ public class HoleTrigger : MonoBehaviour
         if (LevelManager.Instance == null) return;
 
         _triggered = true;
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.PlaySfx(AudioManager.Instance.holeSinkSfx);
         LevelManager.Instance.CompleteLevel();
     }
 }

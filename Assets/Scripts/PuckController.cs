@@ -94,22 +94,27 @@ public class PuckController : MonoBehaviour
 
     void FixedUpdate()
     {
-        if (LevelManager.Instance == null) return;
+        // Default: magnet not active this frame. Each early-return below
+        // hits this StopMagnetLoop() so the looping audio source actually
+        // fades to silent and stops — without it, the loop would only ever
+        // get SetMagnetLoopActive(true, ...) and would linger indefinitely
+        // after the puck leaves the hole's pull zone.
+        if (LevelManager.Instance == null) { StopMagnetLoop(); return; }
         Vector3 speedVec = _rb.linearVelocity; speedVec.y = 0f;
         float speed = speedVec.magnitude;
-        if (speed < magnetMinSpeed) return;
+        if (speed < magnetMinSpeed) { StopMagnetLoop(); return; }
 
         Vector3 hole = LevelManager.Instance.GetCurrentHolePosition();
-        if (hole == Vector3.positiveInfinity) return;
+        if (hole == Vector3.positiveInfinity) { StopMagnetLoop(); return; }
 
         Vector3 toHole = hole - transform.position; toHole.y = 0f;
         float dist = toHole.magnitude;
-        if (dist > magnetRange || dist < 0.01f) return;
+        if (dist > magnetRange || dist < 0.01f) { StopMagnetLoop(); return; }
 
         // Only pull when heading roughly toward the hole.
         Vector3 velDir = speedVec / speed;
         Vector3 holeDir = toHole / dist;
-        if (Vector3.Dot(velDir, holeDir) < magnetAimDot) return;
+        if (Vector3.Dot(velDir, holeDir) < magnetAimDot) { StopMagnetLoop(); return; }
 
         // Falloff: 1 at distance 0 → 0 at magnetRange. Smoothstep for curve.
         float f = 1f - Mathf.Clamp01(dist / magnetRange);
@@ -120,6 +125,16 @@ public class PuckController : MonoBehaviour
         // hole's "swallow anticipation" pulse + enables NICE SAVE! combo.
         LevelManager.Instance.NotifyMagnetAssist();
         LevelManager.Instance.NotifyHoleAnticipation(f);
+
+        // Audio: magnet hum loop driven by pull strength
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.SetMagnetLoopActive(true, f);
+    }
+
+    static void StopMagnetLoop()
+    {
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.SetMagnetLoopActive(false, 0f);
     }
 
     void OnCollisionEnter(Collision collision)
@@ -141,6 +156,10 @@ public class PuckController : MonoBehaviour
             // Uses unscaled time so the dip itself doesn't get slowed.
             if (speed >= hitStopSpeedThreshold)
                 LevelManager.Instance.TriggerHitStop(hitStopScale, hitStopDuration);
+
+            // Audio: wall hit with speed-scaled volume + pitch
+            if (AudioManager.Instance != null)
+                AudioManager.Instance.PlayWallHit(speed);
         }
     }
 
@@ -158,6 +177,13 @@ public class PuckController : MonoBehaviour
         if (isMoving)
         {
             if (_isDragging) EndDrag();
+            // Keep arcade edge-detection in sync even while puck flies, so a
+            // held-then-released Black during flight can't cause a spurious
+            // fire on the very next stopped frame. Also clear stale aim/power
+            // — neither makes sense to retain while the puck is in motion.
+            _arcadeBlackWasHeld = ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Black);
+            _arcadePower = 0f;
+            _arcadeAimDir = Vector3.zero;
             return;
         }
 
@@ -191,67 +217,122 @@ public class PuckController : MonoBehaviour
     }
 
     // ─── Arcade joystick input ──────────────────────────────
-    // Joystick direction = pull-back direction (aim)
-    // Joystick magnitude = power (0..1 mapped to 0..maxDragDistance)
-    // Black button (JoystickButton0) = launch
+    // NEW MODEL (per team-leader request — analog joystick can't naturally
+    // build pressure):
+    //   Joystick (any tilt past deadzone) → SETS AIM DIRECTION (where puck flies)
+    //   HOLD Black button → POWER builds up over `chargeTimeToMax` seconds
+    //   RELEASE Black → fire with whatever power was reached
+    //   White button → cancel current charge
+    //
+    // The aim direction can be re-adjusted with the joystick at any time,
+    // including while Black is being held — power keeps building, aim stays live.
     [Header("Arcade input")]
     public float arcadeDeadzone = 0.2f;
+    [Tooltip("Seconds for Black-hold to fill the power meter from 0 to 100%.")]
+    public float chargeTimeToMax = 1.2f;
+    [Tooltip("Power must reach at least this fraction (0..1) for a release to count as a real shot.")]
+    public float minChargeToFire = 0.05f;
+
+    Vector3 _arcadeAimDir;    // unit vector in XZ — where the puck will fly
+    float   _arcadePower;     // 0..1 — accumulated charge while Black is held
+    bool    _arcadeBlackWasHeld; // edge detection for "released Black this frame"
+    Vector3 _arcadeDragOverride; // legacy, kept so GetDragVector etc still compile
 
     void UpdateArcadeInput()
     {
-        float jx = Input.GetAxisRaw("Horizontal");
-        float jy = Input.GetAxisRaw("Vertical");
-        Vector2 stick = new Vector2(jx, jy);
+        Vector2 stick = ArcadeInputAdapter.GetStick();
         float mag = stick.magnitude;
+        bool blackHeld = ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Black);
 
+        // 1) Update aim from joystick whenever it's tilted past deadzone.
+        //    Aim persists when stick returns to center — player can pre-aim,
+        //    let go, then start charging.
         if (mag > arcadeDeadzone)
         {
-            // Joystick is tilted — show aim. The drag vector in world space:
-            // stick.x → world X, stick.y → world Z (camera is tilted top-down)
-            float power = Mathf.Clamp01((mag - arcadeDeadzone) / (1f - arcadeDeadzone));
-            Vector3 drag = new Vector3(stick.x, 0f, stick.y).normalized * power * maxDragDistance;
-
+            _arcadeAimDir = new Vector3(stick.x, 0f, stick.y).normalized;
             if (!_isDragging)
             {
                 _isDragging = true;
                 if (aimLine != null) aimLine.enabled = true;
             }
+        }
 
-            // Feed the same visual pipeline as mouse
-            _arcadeDragOverride = drag;
+        // 2) While Black is held AND we have an aim direction → charge power.
+        bool hasAim = _arcadeAimDir.sqrMagnitude > 0.001f;
+        if (blackHeld && hasAim)
+        {
+            _arcadePower = Mathf.Clamp01(_arcadePower + Time.deltaTime / Mathf.Max(0.1f, chargeTimeToMax));
+            if (!_isDragging)
+            {
+                _isDragging = true;
+                if (aimLine != null) aimLine.enabled = true;
+            }
+        }
+
+        // 3) Black RELEASE (with charge) → FIRE in aim direction at current power.
+        //    Re-evaluate aim freshly here (don't trust the cached `hasAim`
+        //    from earlier in the frame) — defensive against any state mutation
+        //    between line 254 and here.
+        bool hasAimNow = _arcadeAimDir.sqrMagnitude > 0.001f;
+        if (_arcadeBlackWasHeld && !blackHeld && _arcadePower >= minChargeToFire && hasAimNow)
+        {
+            Vector3 launchVec = _arcadeAimDir * _arcadePower * maxDragDistance;
+            _rb.AddForce(launchVec * forceMultiplier, ForceMode.Impulse);
+            if (_rb.linearVelocity.magnitude > maxLaunchSpeed)
+                _rb.linearVelocity = _rb.linearVelocity.normalized * maxLaunchSpeed;
+
+            // Audio: launch sfx, pitch + volume scale with charge
+            if (AudioManager.Instance != null)
+                AudioManager.Instance.PlaySfx(AudioManager.Instance.puckLaunchSfx,
+                    volume: 0.6f + 0.4f * _arcadePower,
+                    pitch: 0.85f + 0.4f * _arcadePower);
+
+            EndDrag();
+            _arcadePower = 0f;
+            _arcadeAimDir = Vector3.zero;
+        }
+        // Released Black with too little charge → cancel quietly. Clear BOTH
+        // power AND aim so the visual block at the end of Update doesn't
+        // render a stale aim line for an extra frame.
+        else if (_arcadeBlackWasHeld && !blackHeld)
+        {
+            _arcadePower = 0f;
+            _arcadeAimDir = Vector3.zero;
+            // Also drop drag-state so EndDrag's job (hide aim/preview) happens
+            if (_isDragging) EndDrag();
+        }
+        _arcadeBlackWasHeld = blackHeld;
+
+        // 4) White button → cancel an in-progress charge, keep puck at rest.
+        if (_isDragging && ArcadeInputAdapter.CancelDown())
+        {
+            EndDrag();
+            _arcadePower = 0f;
+            _arcadeAimDir = Vector3.zero;
+            return;
+        }
+
+        // 5) Visuals — aim line points where the puck WILL go; preview shows
+        //    full predicted bounce path; power arc fills with charge level.
+        if (_isDragging && hasAim)
+        {
+            Vector3 launchVec = _arcadeAimDir * _arcadePower * maxDragDistance;
+            // UpdatePreview / UpdatePowerArc were written for the mouse model
+            // where `drag` = pull-back direction (puck launches OPPOSITE).
+            // Pass -launchVec so internal inversion gives the correct direction.
+            Vector3 dragForVisuals = -launchVec;
+
             Vector3 origin = transform.position;
-            Vector3 target = origin - drag;
+            Vector3 target = origin + launchVec; // aim line points TOWARD shot direction
             if (aimLine != null)
             {
                 aimLine.SetPosition(0, origin);
                 aimLine.SetPosition(1, target);
             }
-            UpdatePreview(drag);
-            UpdatePowerArc(drag);
-        }
-        else if (_isDragging && mag <= arcadeDeadzone)
-        {
-            // Joystick released back to center — NOT a launch.
-            // Player must press the button to launch.
-            // Keep aim visible at last direction until button or re-tilt.
-        }
-
-        // Black button = launch (JoystickButton0)
-        if (_isDragging && Input.GetKeyDown(KeyCode.JoystickButton0))
-        {
-            Vector3 drag = _arcadeDragOverride;
-            EndDrag();
-            if (drag.magnitude > 0.15f)
-            {
-                _rb.AddForce(-drag * forceMultiplier, ForceMode.Impulse);
-                if (_rb.linearVelocity.magnitude > maxLaunchSpeed)
-                    _rb.linearVelocity = _rb.linearVelocity.normalized * maxLaunchSpeed;
-            }
-            _arcadeDragOverride = Vector3.zero;
+            UpdatePreview(dragForVisuals);
+            UpdatePowerArc(dragForVisuals);
         }
     }
-
-    Vector3 _arcadeDragOverride;
 
     Vector3 GetDragVector()
     {
@@ -392,6 +473,15 @@ public class PuckController : MonoBehaviour
         // Cap max speed so extreme drags don't tunnel the puck through walls.
         if (_rb.linearVelocity.magnitude > maxLaunchSpeed)
             _rb.linearVelocity = _rb.linearVelocity.normalized * maxLaunchSpeed;
+
+        // Audio: launch sound, pitch scales with shot power
+        if (AudioManager.Instance != null)
+        {
+            float power = Mathf.Clamp01(drag.magnitude / maxDragDistance);
+            AudioManager.Instance.PlaySfx(AudioManager.Instance.puckLaunchSfx,
+                volume: 0.7f + 0.3f * power,
+                pitch: 0.9f + 0.3f * power);
+        }
     }
 
     void EndDrag()
@@ -431,5 +521,13 @@ public class PuckController : MonoBehaviour
         _rb.linearVelocity = Vector3.zero;
         _rb.angularVelocity = Vector3.zero;
         EndDrag();
+
+        // Clear arcade charge state on respawn. Without this, if the puck
+        // died mid-charge the next press of Black would fire instantly
+        // (stale _arcadeBlackWasHeld + lingering _arcadePower) before the
+        // player even had a chance to aim.
+        _arcadePower = 0f;
+        _arcadeAimDir = Vector3.zero;
+        _arcadeBlackWasHeld = false;
     }
 }

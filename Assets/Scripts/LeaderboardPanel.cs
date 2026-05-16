@@ -12,7 +12,7 @@ using System.Collections;
 ///   1. Panel fades in with scale bounce
 ///   2. Entries reveal one by one (top-down, staggered)
 ///   3. Player's row highlights in yellow
-///   4. After autoAdvanceSeconds OR JoystickButton0/Space, onFinished fires
+///   4. After autoAdvanceSeconds OR Black button / Space / mouse, onFinished fires
 ///   5. Panel fades out → Luxodd Continue popup is triggered
 /// </summary>
 public class LeaderboardPanel : MonoBehaviour
@@ -39,6 +39,7 @@ public class LeaderboardPanel : MonoBehaviour
 
     bool _waitingForInput;
     bool _skipped;
+    bool _isAnimating;
     Action _onFinished;
 
     void Awake()
@@ -46,11 +47,36 @@ public class LeaderboardPanel : MonoBehaviour
         if (group != null) { group.alpha = 0f; group.interactable = false; group.blocksRaycasts = false; }
     }
 
+    /// <summary>
+    /// Editor-only: shows the panel with fake data so you can preview the
+    /// look/animation without waiting for a death or time-up. Right-click
+    /// this component in the inspector → "Preview With Fake Data".
+    /// </summary>
+    [ContextMenu("Preview With Fake Data")]
+    public void PreviewWithFakeData()
+    {
+        var fake = new LeaderboardData[]
+        {
+            new LeaderboardData { rank = 1,  playerName = "REPTILE",   score = 24850 },
+            new LeaderboardData { rank = 2,  playerName = "SCORPION",  score = 22100 },
+            new LeaderboardData { rank = 3,  playerName = "RAIDEN",    score = 19450 },
+            new LeaderboardData { rank = 4,  playerName = "SUB_ZERO",  score = 17200 },
+            new LeaderboardData { rank = 5,  playerName = "JOHNNY",    score = 15800 },
+            new LeaderboardData { rank = 6,  playerName = "KITANA",    score = 14200 },
+            new LeaderboardData { rank = 7,  playerName = "YOU",       score = 12500 },
+            new LeaderboardData { rank = 8,  playerName = "JADE",      score = 10900 },
+            new LeaderboardData { rank = 9,  playerName = "ERMAC",     score =  9100 },
+            new LeaderboardData { rank = 10, playerName = "BARAKA",    score =  7500 },
+        };
+        Show(fake, 7, 12500, "YOU", null);
+    }
+
     void Update()
     {
         if (!_waitingForInput) return;
+        // Skip on: Space, Black button (BLACK = arcade Confirm), or mouse click.
         if (Input.GetKeyDown(KeyCode.Space)
-            || Input.GetKeyDown(KeyCode.JoystickButton0)
+            || ArcadeInputAdapter.ConfirmDown()
             || Input.GetMouseButtonDown(0))
         {
             _skipped = true;
@@ -63,12 +89,30 @@ public class LeaderboardPanel : MonoBehaviour
     /// </summary>
     public void Show(LeaderboardData[] entries, int myRank, int myScore, string myName, Action onFinished)
     {
+        // Re-entrancy guard: a second Show() call while we're already animating
+        // would otherwise overwrite _onFinished and orphan the first caller's
+        // callback. Cancel the in-flight routine first and chain the new one.
+        if (_isAnimating)
+        {
+            Debug.LogWarning("[LeaderboardPanel] Show() called while already showing — " +
+                             "cancelling current animation. Previous onFinished WILL fire so " +
+                             "the original caller's flow doesn't deadlock.");
+            // Fire the previous callback so the original caller (e.g., LuxoddBridge)
+            // isn't left waiting forever.
+            var prev = _onFinished;
+            _onFinished = null;
+            StopAllCoroutines();
+            prev?.Invoke();
+        }
+
+        _isAnimating = true;
         _onFinished = onFinished;
         _skipped = false;
         _waitingForInput = false;
         gameObject.SetActive(true);
         if (group != null) { group.alpha = 0f; group.interactable = false; group.blocksRaycasts = false; }
         if (card != null) card.localScale = Vector3.zero;
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayPanelOpen();
         StartCoroutine(ShowRoutine(entries, myRank, myScore, myName));
     }
 
@@ -215,7 +259,12 @@ public class LeaderboardPanel : MonoBehaviour
         if (group != null) { group.alpha = 0f; group.interactable = false; group.blocksRaycasts = false; }
         gameObject.SetActive(false);
 
-        _onFinished?.Invoke();
+        // Capture + clear before invoking so a re-entrant Show() in the
+        // callback chain doesn't see stale state.
+        var cb = _onFinished;
+        _onFinished = null;
+        _isAnimating = false;
+        cb?.Invoke();
     }
 
     static IEnumerator WaitUnscaled(float seconds)

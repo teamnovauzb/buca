@@ -84,11 +84,21 @@ public class LuxoddGameBridge : MonoBehaviour
         // Find the LeaderboardPanel in the freshly-loaded scene (it's
         // typically inside the GameHUD canvas). FindFirstObjectByType
         // also finds inactive objects if we pass true, which is needed
-        // since the panel is inactive by default.
-        var panel = FindFirstObjectByType<LeaderboardPanel>(FindObjectsInactive.Include);
-        if (panel != null)
+        // since the panel may be hidden by default.
+        // Scene-match guard: if FindFirstObjectByType returns a panel from a
+        // DontDestroyOnLoad bucket or a stale additive scene, prefer the one
+        // belonging to the just-loaded scene.
+        var allPanels = FindObjectsByType<LeaderboardPanel>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        LeaderboardPanel best = null;
+        foreach (var p in allPanels)
         {
-            leaderboardPanel = panel;
+            if (p == null) continue;
+            if (p.gameObject.scene == scene) { best = p; break; }
+            if (best == null) best = p; // fallback to any
+        }
+        if (best != null)
+        {
+            leaderboardPanel = best;
             Debug.Log($"[LuxoddBridge] Auto-wired LeaderboardPanel in scene '{scene.name}'.");
         }
     }
@@ -259,8 +269,10 @@ public class LuxoddGameBridge : MonoBehaviour
     void TriggerContinuePopup(Action onContinue, Action onEnd)
     {
         Time.timeScale = 0f;
+        bool callbackFired = false;
         _webSocketService.SendSessionOptionContinue((action) =>
         {
+            callbackFired = true;
             Time.timeScale = 1f;
             switch (action)
             {
@@ -276,6 +288,27 @@ public class LuxoddGameBridge : MonoBehaviour
                     break;
             }
         });
+        // Safety net — if Luxodd never fires the callback (network drop, popup
+        // closed externally, etc.), restore Time.timeScale and treat as End so
+        // the game doesn't freeze forever at timeScale=0.
+        StartCoroutine(ContinuePopupTimeoutCo(() => callbackFired, onEnd));
+    }
+
+    System.Collections.IEnumerator ContinuePopupTimeoutCo(Func<bool> isFired, Action onEnd)
+    {
+        const float TimeoutSeconds = 30f;
+        float t = 0f;
+        while (t < TimeoutSeconds)
+        {
+            if (isFired()) yield break;
+            t += UnityEngine.Time.unscaledDeltaTime;
+            yield return null;
+        }
+        if (isFired()) yield break;
+        Debug.LogWarning("[LuxoddBridge] Continue popup callback never fired after " +
+                         TimeoutSeconds + "s — restoring Time.timeScale and invoking onEnd.");
+        UnityEngine.Time.timeScale = 1f;
+        onEnd?.Invoke();
     }
 #endif
 
@@ -465,35 +498,11 @@ public class LuxoddGameBridge : MonoBehaviour
     // Arcade input detection (used by PuckController)
     // ═══════════════════════════════════════════════════════════
 
-    static bool _arcadeDetected;
-
     /// <summary>
     /// Returns true if arcade joystick/button input has been detected
     /// at any point during this session. Once true, stays true.
+    /// Routes through ArcadeInputAdapter so Luxodd's deadzone + axis
+    /// inversion settings apply consistently.
     /// </summary>
-    public static bool IsArcadeInputActive
-    {
-        get
-        {
-            if (_arcadeDetected) return true;
-            // Check Unity's raw joystick axes for any movement
-            float jx = Input.GetAxisRaw("Horizontal");
-            float jy = Input.GetAxisRaw("Vertical");
-            if (Mathf.Abs(jx) > 0.15f || Mathf.Abs(jy) > 0.15f)
-            {
-                _arcadeDetected = true;
-                return true;
-            }
-            // Check arcade buttons (JoystickButton0..9)
-            for (int i = 0; i <= 9; i++)
-            {
-                if (Input.GetKey(KeyCode.JoystickButton0 + i))
-                {
-                    _arcadeDetected = true;
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
+    public static bool IsArcadeInputActive => ArcadeInputAdapter.DetectAnyArcadeInput();
 }

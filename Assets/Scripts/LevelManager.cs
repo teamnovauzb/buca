@@ -42,6 +42,14 @@ public class LevelManager : MonoBehaviour
     [Header("Game-complete panel (optional — shown after final level)")]
     public GameCompletePanel gameCompletePanel;
 
+    [Header("Leaderboard panel (fallback for standalone — without LuxoddGameBridge)")]
+    [Tooltip("If assigned, the leaderboard appears on death/time-up even when no LuxoddGameBridge is present. Auto-found at Start.")]
+    public LeaderboardPanel leaderboardPanel;
+    [Tooltip("Show the leaderboard panel before respawning on deadly-wall death.")]
+    public bool showLeaderboardOnDeath = true;
+    [Tooltip("Show the leaderboard panel before restarting on time-up.")]
+    public bool showLeaderboardOnTimeUp = true;
+
     [Header("Timer")]
     [Tooltip("Per-level settings array — index matches levelPrefabs. Leave entries " +
              "null to use the default time limit.")]
@@ -135,6 +143,9 @@ public class LevelManager : MonoBehaviour
     int _displayedScore;
     float _scoreDisplayVel;
 
+    // Accumulated bonus from pickups (added to per-level score)
+    int _bonusScoreThisLevel;
+
     // Rail tracking for star rating
     int _totalRailsInLevel;
     int _litRailCount;
@@ -180,7 +191,8 @@ public class LevelManager : MonoBehaviour
     {
         if (levelPrefabs == null || levelPrefabs.Length == 0)
         {
-            Debug.LogError("[LevelManager] No level prefabs assigned. Run RealBuca > Setup Game Scene.");
+            Debug.LogError("[LevelManager] No level prefabs assigned. " +
+                           "Drag your level prefabs into LevelManager.levelPrefabs.");
             return;
         }
 
@@ -212,6 +224,11 @@ public class LevelManager : MonoBehaviour
         if (winRing != null) winRing.SetActive(false);
         if (flashOverlay != null) flashOverlay.color = new Color(1f, 1f, 1f, 0f);
         if (levelBanner != null) levelBanner.color = new Color(1f, 1f, 1f, 0f);
+
+        // Auto-find leaderboard panel — needed for the standalone fallback
+        // path so the panel still appears on death/time-up without a bridge.
+        if (leaderboardPanel == null)
+            leaderboardPanel = FindFirstObjectByType<LeaderboardPanel>(FindObjectsInactive.Include);
 
         LoadLevel(_currentIndex);
     }
@@ -245,12 +262,27 @@ public class LevelManager : MonoBehaviour
     }
 
     /// <summary>Counts down the level timer and triggers time-up on expiry.</summary>
+    int _lastTimerTickSecond = -1;
     void TickTimer()
     {
         if (!_timerActive || _isTransitioning || _timeUpTriggered) return;
 
+        float prev = _timeRemaining;
         _timeRemaining -= Time.deltaTime;
         if (timerDisplay != null) timerDisplay.SetTime(_timeRemaining);
+
+        // Audio: drive tense-mode music swap + per-second tick in last 5s
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.NotifyTimerRemaining(_timeRemaining, true);
+            int curSec = Mathf.CeilToInt(_timeRemaining);
+            int prevSec = Mathf.CeilToInt(prev);
+            if (curSec != prevSec && curSec > 0 && curSec <= 5)
+            {
+                AudioManager.Instance.PlaySfx(AudioManager.Instance.timerLowTickSfx);
+                _lastTimerTickSecond = curSec;
+            }
+        }
 
         if (_timeRemaining <= 0f)
         {
@@ -283,6 +315,15 @@ public class LevelManager : MonoBehaviour
         if (deathFovKick != 0f) StartCoroutine(KickFov(deathFovKick, fovKickDuration));
 
         ShowBanner("TIME'S UP!");
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlaySfx(AudioManager.Instance.timeUpSfx);
+            AudioManager.Instance.SetMagnetLoopActive(false);
+            AudioManager.Instance.SetWindLoopActive(false);
+            AudioManager.Instance.SetGravityLoopActive(false);
+            if (AudioManager.Instance.gameOverMusic != null)
+                AudioManager.Instance.PlayMusic(AudioManager.Instance.gameOverMusic, 0.4f);
+        }
 
         if (deathBurst != null && puck != null)
         {
@@ -306,30 +347,35 @@ public class LevelManager : MonoBehaviour
 
         yield return new WaitForSeconds(1.3f);
 
-        // Luxodd: show Continue popup (player pays credits to retry).
-        // Standalone: just restart immediately.
+        // Luxodd: show leaderboard → Continue popup (player pays credits).
+        // Standalone fallback: show leaderboard with local score, then restart.
         if (luxoddBridge != null)
         {
             bool waitingForChoice = true;
             luxoddBridge.OnTimeUp(
-                onContinue: () =>
-                {
-                    // Player paid credits → restart the same level
-                    waitingForChoice = false;
-                },
+                onContinue: () => { waitingForChoice = false; },
                 onEnd: () =>
                 {
-                    // Player chose End → session ends, system handles exit.
-                    // Nothing more to do here; bridge calls BackToSystem.
                     waitingForChoice = false;
                     _isTransitioning = false;
                 });
-
-            // Wait until the Luxodd popup resolves
-            while (waitingForChoice) yield return null;
-
-            // If we're still transitioning, player chose Continue — restart level
+            // Bound the wait so a missing/dropped Luxodd callback can't deadlock
+            // gameplay. If it expires we fall through to a free restart.
+            float waitT = 0f;
+            const float MaxWait = 60f;
+            while (waitingForChoice && waitT < MaxWait)
+            {
+                waitT += Time.unscaledDeltaTime;
+                yield return null;
+            }
+            if (waitingForChoice)
+                Debug.LogWarning("[LevelManager] TimeUp Luxodd choice timed out — restarting level.");
             if (!_isTransitioning) yield break;
+        }
+        else if (showLeaderboardOnTimeUp && leaderboardPanel != null)
+        {
+            // No bridge → still show the leaderboard with local placeholder data
+            yield return ShowStandaloneLeaderboard();
         }
 
         // Restart the same level
@@ -373,9 +419,8 @@ public class LevelManager : MonoBehaviour
             _litRailCount, _totalRailsInLevel,
             starStrokes, 0);
 
-        // Cumulative total = finished levels + current projection.
-        // This matches the leaderboard's running-total score format.
-        int target = _campaignTotalScore + est.total;
+        // Cumulative total = finished levels + current projection + pickup bonus.
+        int target = _campaignTotalScore + est.total + _bonusScoreThisLevel;
 
         float smooth = Mathf.SmoothDamp(_displayedScore, target, ref _scoreDisplayVel, 0.25f);
         _displayedScore = Mathf.RoundToInt(smooth);
@@ -472,11 +517,12 @@ public class LevelManager : MonoBehaviour
 
     public void LoadLevel(int index)
     {
-        if (levelPrefabs == null || index < 0 || index >= levelPrefabs.Length) return;
+        if (index < 0) return;
+        if (levelPrefabs == null || index >= levelPrefabs.Length) return;
 
         if (_currentInstance != null) Destroy(_currentInstance);
-
         _currentIndex = index;
+
         _currentInstance = Instantiate(levelPrefabs[index]);
         _currentInstance.name = levelPrefabs[index].name;
 
@@ -491,6 +537,7 @@ public class LevelManager : MonoBehaviour
         // TickLiveScore immediately recomputes with the new level's data.
         _displayedScore = _campaignTotalScore;
         _scoreDisplayVel = 0f;
+        _bonusScoreThisLevel = 0;
         if (scoreDisplay != null) scoreDisplay.text = $"SCORE  {_campaignTotalScore}";
 
         // Count rails + reset any lit state from previous playthrough
@@ -502,9 +549,10 @@ public class LevelManager : MonoBehaviour
         // Hide star UI until the win moment
         SetStarDisplay(0, false);
 
-        // Timer — read per-level settings or fall back to default
+        // Timer — per-level settings override the default.
         _timeLimit = defaultTimeLimit;
-        if (levelSettings != null && _currentIndex < levelSettings.Length && levelSettings[_currentIndex] != null)
+        if (levelSettings != null && _currentIndex < levelSettings.Length
+            && levelSettings[_currentIndex] != null)
             _timeLimit = levelSettings[_currentIndex].timeLimit;
         _timeRemaining = _timeLimit;
         _timerActive = _timeLimit > 0f;
@@ -512,6 +560,28 @@ public class LevelManager : MonoBehaviour
         if (timerDisplay != null) timerDisplay.Init(_timeLimit);
 
         UpdateHud();
+
+        // Reset the control-hint bar so it shows again for the first
+        // few shots of every new level (otherwise once it auto-hides
+        // in level 1 it stays hidden forever across LoadLevel calls).
+        var hintBar = FindFirstObjectByType<ControlHintBar>(FindObjectsInactive.Include);
+        if (hintBar != null) hintBar.ResetForNewLevel();
+
+        // Audio: level-start whoosh + restore gameplay music. We need to
+        // explicitly request gameplayMusic here because TimeUpSequence /
+        // DeathSequence may have swapped to gameOverMusic — without this
+        // the player respawns into the game-over track stuck on loop.
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlaySfx(AudioManager.Instance.levelStartSfx);
+            if (AudioManager.Instance.gameplayMusic != null)
+                AudioManager.Instance.PlayMusic(AudioManager.Instance.gameplayMusic, 0.6f);
+            // Reset all looping-mechanic sources — we may have left magnet/
+            // wind/gravity hum playing if the previous level got interrupted.
+            AudioManager.Instance.SetMagnetLoopActive(false);
+            AudioManager.Instance.SetWindLoopActive(false);
+            AudioManager.Instance.SetGravityLoopActive(false);
+        }
 
         // Luxodd: notify server that a new level started.
         if (luxoddBridge != null)
@@ -556,6 +626,11 @@ public class LevelManager : MonoBehaviour
         StartCoroutine(AnimateWinRing(burstPos));
         ShakeCamera(0.25f, 0.35f);
         FlashScreen(new Color(0.55f, 0.95f, 1f), 0.35f, 0.35f);
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlaySfx(AudioManager.Instance.levelCompleteSfx);
+            AudioManager.Instance.SetMagnetLoopActive(false);
+        }
 
         // Determine combo type for scoring.
         bool recentAssist = (Time.time - _lastMagnetAssistTime) < 0.6f;
@@ -580,6 +655,8 @@ public class LevelManager : MonoBehaviour
                 case 1: comboText.Show("NICE SAVE!", new Color(0.5f, 1f, 0.8f)); break;
             }
         }
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.PlayCombo(comboType);
 
         // FOV zoom-in during win sequence
         if (winFovKick != 0f) StartCoroutine(KickFov(winFovKick, fovKickDuration));
@@ -592,6 +669,9 @@ public class LevelManager : MonoBehaviour
             _shotCount, _timeRemaining, _timeLimit,
             _litRailCount, _totalRailsInLevel,
             starStrokes, comboType);
+
+        // Roll in pickup bonuses collected during the level
+        score.total += _bonusScoreThisLevel;
 
         // Persist best stars + best score (monotonic — never decrease).
         int prevBestStars = PlayerPrefs.GetInt(PrefLevelStars + _currentIndex, 0);
@@ -646,6 +726,8 @@ public class LevelManager : MonoBehaviour
         // Advance level
         int next = _currentIndex + 1;
         bool finishedCampaign = next >= levelPrefabs.Length;
+        int campaignMaxLevels = levelPrefabs.Length;
+
         if (finishedCampaign)
         {
             if (loopAtEnd)
@@ -655,10 +737,14 @@ public class LevelManager : MonoBehaviour
             else if (gameCompletePanel != null)
             {
                 // Luxodd: report campaign completion + trigger Restart popup.
+                // _campaignTotalScore here ALREADY includes this level's score
+                // (added on line ~681 a moment ago), so we don't need to add
+                // score.total again. Sending the cumulative campaign total is
+                // what the leaderboard ranking expects.
                 if (luxoddBridge != null)
-                    luxoddBridge.OnCampaignComplete(_campaignTotalStrokes, _campaignTotalStars, score.total);
+                    luxoddBridge.OnCampaignComplete(_campaignTotalStrokes, _campaignTotalStars, _campaignTotalScore);
 
-                gameCompletePanel.Show(_campaignTotalStrokes, _campaignTotalStars, levelPrefabs.Length * 3);
+                gameCompletePanel.Show(_campaignTotalStrokes, _campaignTotalStars, campaignMaxLevels * 3);
                 _isTransitioning = false;
                 yield break;
             }
@@ -787,6 +873,13 @@ public class LevelManager : MonoBehaviour
         ShakeCamera(0.4f, 0.45f);
         FlashScreen(new Color(1f, 0.25f, 0.3f), 0.55f, 0.4f);
         if (deathFovKick != 0f) StartCoroutine(KickFov(deathFovKick, fovKickDuration));
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlaySfx(AudioManager.Instance.puckDeathSfx);
+            AudioManager.Instance.SetMagnetLoopActive(false);
+            AudioManager.Instance.SetWindLoopActive(false);
+            AudioManager.Instance.SetGravityLoopActive(false);
+        }
 
         // Puck quickly scales to 0 (it "explodes")
         float t = 0f, dur = 0.18f;
@@ -806,8 +899,8 @@ public class LevelManager : MonoBehaviour
         // Brief pause at zero scale so the player reads "I died"
         yield return new WaitForSeconds(0.3f);
 
-        // Luxodd: show leaderboard → trigger Continue popup.
-        // Standalone: just respawn immediately (no credits system).
+        // Luxodd: show leaderboard → Continue popup.
+        // Standalone fallback: show leaderboard with local score, then respawn.
         if (luxoddBridge != null)
         {
             bool waitingForChoice = true;
@@ -821,18 +914,35 @@ public class LevelManager : MonoBehaviour
                 },
                 onEnd: () =>
                 {
-                    // Session ending — bridge handles BackToSystem
                     waitingForChoice = false;
                     _isTransitioning = false;
                 });
 
-            while (waitingForChoice) yield return null;
+            // Same timeout safety net as TimeUpSequence — if Luxodd never replies
+            // we treat as Continue (free respawn) rather than freezing the game.
+            float waitT = 0f;
+            const float MaxWait = 60f;
+            while (waitingForChoice && waitT < MaxWait)
+            {
+                waitT += Time.unscaledDeltaTime;
+                yield return null;
+            }
+            if (waitingForChoice)
+            {
+                Debug.LogWarning("[LevelManager] Death Luxodd choice timed out — free respawn.");
+                playerContinued = true;
+                waitingForChoice = false;
+            }
 
             if (!playerContinued)
             {
-                // Player chose End — session is being closed by Luxodd
+                // Player chose End — session being closed by Luxodd
                 yield break;
             }
+        }
+        else if (showLeaderboardOnDeath && leaderboardPanel != null)
+        {
+            yield return ShowStandaloneLeaderboard();
         }
 
         // Teleport to start
@@ -991,15 +1101,61 @@ public class LevelManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Shows the leaderboard panel with placeholder names and the
+    /// player's local campaign score. Used as the standalone fallback
+    /// when no LuxoddGameBridge is wired in the scene — without this
+    /// the panel never appears outside a real arcade environment.
+    /// </summary>
+    System.Collections.IEnumerator ShowStandaloneLeaderboard()
+    {
+        if (leaderboardPanel == null) yield break;
+
+        var fake = new LeaderboardPanel.LeaderboardData[]
+        {
+            new LeaderboardPanel.LeaderboardData { rank = 1,  playerName = "ARCADE_KING", score = 28400 },
+            new LeaderboardPanel.LeaderboardData { rank = 2,  playerName = "P1_HERO",     score = 24750 },
+            new LeaderboardPanel.LeaderboardData { rank = 3,  playerName = "QUARTER",     score = 21100 },
+            new LeaderboardPanel.LeaderboardData { rank = 4,  playerName = "BOSS_RUSH",   score = 18450 },
+            new LeaderboardPanel.LeaderboardData { rank = 5,  playerName = "1UP",         score = 16800 },
+            new LeaderboardPanel.LeaderboardData { rank = 6,  playerName = "COMBO_X",     score = 14200 },
+            new LeaderboardPanel.LeaderboardData { rank = 7,  playerName = "PUCKMASTER",  score = 11700 },
+            new LeaderboardPanel.LeaderboardData { rank = 8,  playerName = "BUCA_FAN",    score =  9100 },
+            new LeaderboardPanel.LeaderboardData { rank = 9,  playerName = "LUCKY7",      score =  6500 },
+            new LeaderboardPanel.LeaderboardData { rank = 10, playerName = "ROOKIE",      score =  4200 },
+        };
+
+        // Place the player by their local campaign score
+        int myScore = _campaignTotalScore;
+        int myRank = fake.Length + 1;
+        for (int i = 0; i < fake.Length; i++)
+        {
+            if (myScore >= fake[i].score) { myRank = fake[i].rank; break; }
+        }
+
+        bool done = false;
+        leaderboardPanel.Show(fake, myRank, myScore, "YOU", () => done = true);
+        while (!done) yield return null;
+    }
+
+    /// <summary>
     /// 3 stars = finished under threeStarStrokes AND lit all rails.
     /// 2 stars = finished under 2×threeStarStrokes OR lit all rails.
     /// 1 star  = finished the level at all.
+    ///
+    /// Reads the per-level stroke target from levelSettings if present;
+    /// falls back to the LevelManager-wide threeStarStrokes default.
+    /// (The other scoring sites do this lookup too — keeping them in sync.)
     /// </summary>
     int CalculateStars()
     {
+        int starStrokes = threeStarStrokes;
+        if (levelSettings != null && _currentIndex < levelSettings.Length
+            && levelSettings[_currentIndex] != null)
+            starStrokes = levelSettings[_currentIndex].threeStarStrokes;
+
         bool allLit = _totalRailsInLevel > 0 && _litRailCount >= _totalRailsInLevel;
-        if (_shotCount <= threeStarStrokes && allLit) return 3;
-        if (_shotCount <= threeStarStrokes || allLit)  return 2;
+        if (_shotCount <= starStrokes && allLit) return 3;
+        if (_shotCount <= starStrokes || allLit)  return 2;
         return 1;
     }
 
@@ -1024,6 +1180,9 @@ public class LevelManager : MonoBehaviour
             var rt = starImages[i].rectTransform;
             float dur = 0.35f, t = 0f;
             Color target = (i < stars) ? starLitColor : starUnlitColor;
+            // Audio: ascending "ting" per earned star
+            if (i < stars && AudioManager.Instance != null)
+                AudioManager.Instance.PlayStarReveal(i);
             while (t < dur)
             {
                 t += Time.deltaTime;
@@ -1124,6 +1283,22 @@ public class LevelManager : MonoBehaviour
     {
         _shakeAmount = amount;
         _shakeTime = duration;
+    }
+
+    /// <summary>
+    /// Called by ScorePickup when the puck collects an orb. Adds to
+    /// this level's bonus total and fires a small spark at the position.
+    /// </summary>
+    public void AddBonusScore(int amount, Vector3 worldPos)
+    {
+        _bonusScoreThisLevel += amount;
+        // Reuse the wall spark burst as a generic "ping" visual.
+        if (wallSparkBurst != null)
+        {
+            wallSparkBurst.transform.position = worldPos;
+            wallSparkBurst.Clear(true);
+            wallSparkBurst.Play(true);
+        }
     }
 
     Coroutine _hitStopCo;

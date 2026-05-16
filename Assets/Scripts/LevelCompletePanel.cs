@@ -57,7 +57,7 @@ public class LevelCompletePanel : MonoBehaviour
     {
         if (!_waitingForInput) return;
         if (Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(0)
-            || Input.GetKeyDown(KeyCode.JoystickButton0))
+            || ArcadeInputAdapter.ConfirmDown())
         {
             _skipped = true;
         }
@@ -76,6 +76,7 @@ public class LevelCompletePanel : MonoBehaviour
         // Must activate BEFORE StartCoroutine — Unity can't run
         // coroutines on inactive GameObjects.
         gameObject.SetActive(true);
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayPanelOpen();
 
         // Reset visuals immediately so the first frame isn't a flash of
         // stale content from the previous level.

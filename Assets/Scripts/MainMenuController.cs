@@ -29,8 +29,9 @@ public class MainMenuController : MonoBehaviour
     public Transform orbitPuck;
 
     [Header("Auto-start timer")]
-    [Tooltip("Seconds of idle before the game auto-starts. 0 = disabled.")]
-    public float autoStartSeconds = 45f;
+    [Tooltip("Seconds of idle before the game auto-starts. 0 = disabled. " +
+             "QA req: max 30s for arcade-cabinet attract mode.")]
+    public float autoStartSeconds = 30f;
     [Tooltip("TMP text showing the countdown. Assign in Inspector.")]
     public TMP_Text autoStartText;
     [Tooltip("Optional font override — drag your Bangers SDF (or any TMP font asset) " +
@@ -47,6 +48,33 @@ public class MainMenuController : MonoBehaviour
     // Auto-start state
     float _autoStartTimer;
     bool _autoStarting;
+    LevelSelectController _levelSelect;
+
+    // Focus-grace: when the OS / editor gives focus back, Input events fire
+    // spurious events for many frames. We detect this by BOTH:
+    //   1. OnApplicationFocus / OnApplicationPause — fires for OS-level focus
+    //   2. realtime gap detection — fires for any pause Unity didn't notify
+    //      us about (editor tab switching, breakpoint pauses, etc.)
+    // Either trigger arms a 30-frame grace where input checks are skipped.
+    int _focusGraceFrames;
+    const int FocusGraceFrameCount = 30; // ~0.5s @ 60fps
+    float _lastRealtime;
+    bool _stickEdgeWas;
+    void OnApplicationFocus(bool hasFocus) { if (hasFocus) _focusGraceFrames = FocusGraceFrameCount; }
+    void OnApplicationPause (bool paused)  { if (!paused) _focusGraceFrames = FocusGraceFrameCount; }
+
+    void DetectRealtimeGap()
+    {
+        float now = Time.realtimeSinceStartup;
+        if (_lastRealtime > 0f && (now - _lastRealtime) > 0.5f)
+        {
+            // >500ms gap between Update calls = the game was paused / minimized
+            // / tab-switched. Arm focus-grace so input from the resume frame
+            // doesn't reset the auto-start timer.
+            _focusGraceFrames = FocusGraceFrameCount;
+        }
+        _lastRealtime = now;
+    }
 
     void Start()
     {
@@ -55,6 +83,16 @@ public class MainMenuController : MonoBehaviour
         if (quitRect != null)    _quitBasePos  = quitRect.anchoredPosition;
         if (titleText != null)   _titleBaseSize = titleText.fontSize;
 
+        // QA req #5: arcade attract mode caps auto-start at 30s. Old scenes
+        // may still have 45s serialized — runtime-clamp so the cap holds
+        // regardless of what's in the scene file.
+        if (autoStartSeconds > 30f)
+        {
+            Debug.LogWarning($"[MainMenuController] autoStartSeconds was {autoStartSeconds} " +
+                             "in the scene — clamping to 30 (arcade attract-mode requirement). " +
+                             "Update the value in the Inspector to 30 to silence this warning.");
+            autoStartSeconds = 30f;
+        }
         _autoStartTimer = autoStartSeconds;
 
         // Show auto-start countdown immediately.
@@ -80,19 +118,76 @@ public class MainMenuController : MonoBehaviour
     {
         if (autoStartSeconds <= 0f || _autoStarting) return;
 
-        // Any input resets the timer — mouse move, click, key press, or joystick.
-        if (Input.anyKey || Input.GetAxis("Mouse X") != 0f || Input.GetAxis("Mouse Y") != 0f
-            || Mathf.Abs(Input.GetAxisRaw("Horizontal")) > 0.3f
-            || Mathf.Abs(Input.GetAxisRaw("Vertical")) > 0.3f)
+        // Check if we just resumed from an unannounced pause (editor tab
+        // switch, etc.) — arms focus-grace so the resumed-frame input
+        // doesn't reset the auto-start timer.
+        DetectRealtimeGap();
+
+        // Resolve the level-select panel reference once it exists in the scene.
+        if (_levelSelect == null)
+            _levelSelect = FindFirstObjectByType<LevelSelectController>(FindObjectsInactive.Include);
+        bool levelSelectOpen = _levelSelect != null && _levelSelect.IsOpen;
+
+        if (!levelSelectOpen)
         {
-            _autoStartTimer = autoStartSeconds;
+            // Skip input checks during focus-grace frames so a window refocus
+            // doesn't reset the timer with phantom events.
+            if (_focusGraceFrames > 0)
+            {
+                _focusGraceFrames--;
+                // Snapshot the CURRENT input state into the "was" trackers
+                // every grace frame. Without this, when grace ends with the
+                // stick still held (or a key still down from before refocus),
+                // the very next frame sees stickEdgeNow=true && _stickEdgeWas=false
+                // → registers as a fresh edge → resets the timer. Treating
+                // grace frames as "input was already in this state" prevents
+                // that phantom-edge fire.
+                Vector2 graceStick = ArcadeInputAdapter.GetStick();
+                _stickEdgeWas = Mathf.Abs(graceStick.x) > 0.5f || Mathf.Abs(graceStick.y) > 0.5f;
+            }
+            else
+            {
+                // EDGE-ONLY input detection. The previous design read held
+                // states (Input.anyKey, mouse axes, sustained joystick) which
+                // refocus + a single mouse-cursor jiggle would re-trigger
+                // every frame. Edge detection (down events only) is immune to
+                // refocus phantom events.
+                Vector2 stick = ArcadeInputAdapter.GetStick();
+                bool stickEdgeNow = Mathf.Abs(stick.x) > 0.5f || Mathf.Abs(stick.y) > 0.5f;
+                bool stickEdge    = stickEdgeNow && !_stickEdgeWas;
+                _stickEdgeWas     = stickEdgeNow;
+
+                if (Input.anyKeyDown                  // any key DOWN this frame
+                    || Input.GetMouseButtonDown(0)    // mouse left click
+                    || Input.GetMouseButtonDown(1)    // mouse right click
+                    || stickEdge)                     // joystick first push
+                {
+                    _autoStartTimer = autoStartSeconds;
+                }
+
+                // Arcade shortcuts only fire from the menu — not while the panel is up
+                // (the panel handles its own Green-button = back).
+                if (ArcadeInputAdapter.ConfirmDown()) { PlayGame(); return; }
+                if (ArcadeInputAdapter.CancelDown()) { QuitGame(); return; }
+            }
         }
 
-        // Arcade shortcut: Black button = Play, White button = Quit
-        if (Input.GetKeyDown(KeyCode.JoystickButton0)) { PlayGame(); return; }
-        if (Input.GetKeyDown(KeyCode.JoystickButton9)) { QuitGame(); return; }
+        float prevTimer = _autoStartTimer;
+        // Clamp dt so a long pause / refocus frame doesn't yank the timer
+        // by ~0.33s (Unity's maximumDeltaTime cap). Cap at 1/30 = 33ms so
+        // worst-case single-frame drift is barely perceptible.
+        _autoStartTimer -= Mathf.Min(Time.deltaTime, 1f / 30f);
 
-        _autoStartTimer -= Time.deltaTime;
+        // Audio: tick on every second of the last 5, alarm at 0
+        if (AudioManager.Instance != null)
+        {
+            int prevSec = Mathf.CeilToInt(prevTimer);
+            int curSec = Mathf.CeilToInt(_autoStartTimer);
+            if (curSec != prevSec && curSec > 0 && curSec <= 5)
+                AudioManager.Instance.PlayCountdownTick();
+            else if (curSec <= 0 && prevSec > 0)
+                AudioManager.Instance.PlayCountdownAlarm();
+        }
 
         // Update countdown — always visible with full text + animated number.
         if (autoStartText != null)
@@ -257,6 +352,7 @@ public class MainMenuController : MonoBehaviour
     {
         if (playBurst != null) { playBurst.Clear(true); playBurst.Play(true); }
         _playPressScale = 1.18f;
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
         StartCoroutine(FlashAndLoad(new Color(1f, 0.3f, 0.65f), gameSceneName));
     }
 
@@ -264,6 +360,7 @@ public class MainMenuController : MonoBehaviour
     {
         if (quitBurst != null) { quitBurst.Clear(true); quitBurst.Play(true); }
         _quitPressScale = 1.18f;
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
         StartCoroutine(FlashAndQuit(new Color(0.3f, 0.85f, 1f)));
     }
 
