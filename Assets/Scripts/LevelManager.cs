@@ -936,7 +936,18 @@ public class LevelManager : MonoBehaviour
 
             if (!playerContinued)
             {
-                // Player chose End — session being closed by Luxodd
+                // Player chose End — session being closed by Luxodd.
+                // Defensive: restore puck scale + shadow even though scene is
+                // about to unload. If the End was actually a connection-drop
+                // false-fire (the bug we just fixed in LuxoddGameBridge.OnTimeUp),
+                // the player wouldn't actually be ending — and without this
+                // restore the puck stays invisible (scale=0 from the death
+                // shrink) until the next scene load.
+                if (puck != null) puck.transform.localScale = baseScale;
+                if (puckShadow != null)
+                    puckShadow.localScale = new Vector3(puckSize * 1.9f, 0.004f, puckSize * 1.9f);
+                if (puckTrail != null) { puckTrail.Clear(); puckTrail.emitting = true; }
+                _isTransitioning = false;
                 yield break;
             }
         }

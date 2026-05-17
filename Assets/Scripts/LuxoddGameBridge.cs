@@ -184,7 +184,18 @@ public class LuxoddGameBridge : MonoBehaviour
     public void OnTimeUp(Action onContinue, Action onEnd)
     {
 #if LUXODD_INTEGRATION
-        if (!_connected) { onEnd?.Invoke(); return; }
+        if (!_connected)
+        {
+            // A server connection drop is NOT the player choosing to end the
+            // session — it's a network failure. Fall through to "free respawn"
+            // (same as standalone mode) instead of firing onEnd, which would
+            // have made DeathSequence yield-break BEFORE the grow-back loop —
+            // leaving the puck stuck at scale=0 (invisible) on respawn.
+            Debug.LogWarning("[LuxoddBridge] OnTimeUp/Death called but not connected — " +
+                             "falling back to free respawn (would have invisible-puck'd otherwise).");
+            onContinue?.Invoke();
+            return;
+        }
 
         // Step 1: fetch leaderboard, show panel, THEN trigger Continue popup
         FetchAndShowLeaderboard(() => TriggerContinuePopup(onContinue, onEnd));
