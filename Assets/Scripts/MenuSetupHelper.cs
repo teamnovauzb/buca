@@ -285,7 +285,7 @@ public class MenuSetupHelper : MonoBehaviour
         // ─────────────────────────────────────────────────────
         // Idle countdown — anchored TOP-RIGHT of the card, always visible.
         // Looks like an arcade attract-mode HUD: pill background with
-        // clock-style label "AUTO RETURN  15s". Pulses red when ≤ 5s.
+        // clock-style label "AUTO START  15s". Pulses red when ≤ 5s.
         // Sits OUTSIDE the title/grid/footer flow so it never overlaps.
         // ─────────────────────────────────────────────────────
         var idlePillGO = new GameObject("IdleCountdownPill", typeof(RectTransform));
@@ -310,7 +310,7 @@ public class MenuSetupHelper : MonoBehaviour
         idleRT.offsetMin = new Vector2(14f, 0f);
         idleRT.offsetMax = new Vector2(-14f, 0f);
         var idleTmp = idleGO.AddComponent<TextMeshProUGUI>();
-        idleTmp.text = "AUTO RETURN  15s";
+        idleTmp.text = "AUTO START  15s";
         idleTmp.fontSize = 26;
         idleTmp.fontStyle = FontStyles.Bold;
         idleTmp.alignment = TextAlignmentOptions.Center;

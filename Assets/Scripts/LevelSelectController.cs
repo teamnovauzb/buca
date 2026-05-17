@@ -66,9 +66,13 @@ public class LevelSelectController : MonoBehaviour
     public float fadeDuration = 0.28f;
 
     [Header("Idle auto-close (arcade attract mode)")]
-    [Tooltip("Seconds of no input before the panel auto-closes back to the main menu. " +
+    [Tooltip("Seconds of no input before the panel auto-closes. " +
              "QA req: 15s for the level select panel (max 30s for any arcade menu). 0 = disabled.")]
     public float idleAutoCloseSeconds = 15f;
+    [Tooltip("QA req #4: on idle timeout, AUTO-START THE GAME with the currently focused tile " +
+             "instead of returning to the main menu (which would just spawn another 30s wait). " +
+             "Set false if you want classic close-to-main-menu behavior.")]
+    public bool idleAutoStartsGame = true;
     [Tooltip("Optional TMP_Text showing the countdown when it drops below 10s. Built by MenuSetupHelper.")]
     public TMP_Text idleCountdownText;
 
@@ -330,7 +334,7 @@ public class LevelSelectController : MonoBehaviour
         int curSec = Mathf.Max(0, Mathf.CeilToInt(_idleTimer));
         if (idleCountdownText != null)
         {
-            idleCountdownText.text = $"AUTO RETURN  {curSec}s";
+            idleCountdownText.text = $"AUTO START  {curSec}s";
             bool warning = _idleTimer <= 5f && _idleTimer > 0f;
             if (warning)
             {
@@ -355,9 +359,24 @@ public class LevelSelectController : MonoBehaviour
 
         if (_idleTimer <= 0f)
         {
-            Debug.Log("[LevelSelectController] Idle auto-close expired — closing panel.");
-            _idleTimer = idleAutoCloseSeconds; // reset so we don't spam
-            Hide();
+            _idleTimer = idleAutoCloseSeconds; // reset so we don't fire twice
+            if (idleAutoStartsGame
+                && _selectedIndex >= 0 && _selectedIndex < levels.Count)
+            {
+                // QA req #4: bypass the "return to main menu, wait another
+                // 30s for auto-start" two-step. On idle timeout, jump
+                // straight into the currently-focused level. The selection
+                // defaults to the player's last-played level (set in Show())
+                // so the auto-start picks an appropriate one.
+                Debug.Log($"[LevelSelectController] Idle auto-close expired — auto-starting " +
+                          $"level {_selectedIndex + 1} (player's last-played).");
+                StartLevel(_selectedIndex);
+            }
+            else
+            {
+                Debug.Log("[LevelSelectController] Idle auto-close expired — closing panel.");
+                Hide();
+            }
         }
     }
 
@@ -409,7 +428,7 @@ public class LevelSelectController : MonoBehaviour
         if (idleCountdownText != null)
         {
             int secs = Mathf.CeilToInt(idleAutoCloseSeconds);
-            idleCountdownText.text = $"AUTO RETURN  {secs}s";
+            idleCountdownText.text = $"AUTO START  {secs}s";
             idleCountdownText.color = _idleNormalColor;
             idleCountdownText.transform.localScale = Vector3.one;
         }
