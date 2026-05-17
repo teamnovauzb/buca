@@ -259,6 +259,7 @@ public class PuckController : MonoBehaviour
 
         // 2) While Black is held AND we have an aim direction → charge power.
         bool hasAim = _arcadeAimDir.sqrMagnitude > 0.001f;
+        float prevPower = _arcadePower;
         if (blackHeld && hasAim)
         {
             _arcadePower = Mathf.Clamp01(_arcadePower + Time.deltaTime / Mathf.Max(0.1f, chargeTimeToMax));
@@ -267,6 +268,15 @@ public class PuckController : MonoBehaviour
                 _isDragging = true;
                 if (aimLine != null) aimLine.enabled = true;
             }
+            // Diagnostic log every 25% milestone so QA can VERIFY the gradual
+            // build-up timing in the Console. Logs at ~25%, 50%, 75%, 100%.
+            int prevTier = Mathf.FloorToInt(prevPower * 4f);
+            int curTier  = Mathf.FloorToInt(_arcadePower * 4f);
+            if (curTier > prevTier && _arcadePower < 1.0f)
+                Debug.Log($"[PuckController] Charge {Mathf.RoundToInt(_arcadePower * 100)}% " +
+                          $"(elapsed ≈ {(_arcadePower * chargeTimeToMax):F2}s of {chargeTimeToMax:F2}s)");
+            else if (curTier > prevTier)
+                Debug.Log($"[PuckController] Charge 100% (full power after {chargeTimeToMax:F2}s of holding Black)");
         }
 
         // 3) Black RELEASE (with charge) → FIRE in aim direction at current power.
