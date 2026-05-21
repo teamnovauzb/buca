@@ -376,6 +376,32 @@ public class LuxoddGameBridge : MonoBehaviour
 #endif
     }
 
+    /// <summary>
+    /// Called by MainMenuController.QuitGame to actually leave the game
+    /// and return to the arcade cabinet's game-list screen. In WebGL,
+    /// Application.Quit() is a no-op (browsers can't close themselves),
+    /// so without this the cyan-flash-then-stuck bug occurs.
+    /// Returns true if a Luxodd BackToSystem was issued; false if there's
+    /// no connection (caller should fall back to Application.Quit which
+    /// only works on standalone player anyway).
+    /// </summary>
+    public bool QuitToArcadeMenu()
+    {
+#if LUXODD_INTEGRATION
+        if (_connected && _webSocketService != null)
+        {
+            Debug.Log("[LuxoddBridge] QuitToArcadeMenu → BackToSystem.");
+            _webSocketService.BackToSystem();
+            return true;
+        }
+        Debug.LogWarning("[LuxoddBridge] QuitToArcadeMenu called but Luxodd not connected — " +
+                         "caller will fall back to Application.Quit (no-op in WebGL).");
+        return false;
+#else
+        return false;
+#endif
+    }
+
     // ═══════════════════════════════════════════════════════════
     // User state (server-side persistence, replaces PlayerPrefs)
     // ═══════════════════════════════════════════════════════════

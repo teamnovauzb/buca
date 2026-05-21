@@ -57,9 +57,15 @@ public class MainMenuController : MonoBehaviour
     //      us about (editor tab switching, breakpoint pauses, etc.)
     // Either trigger arms a 30-frame grace where input checks are skipped.
     int _focusGraceFrames;
-    const int FocusGraceFrameCount = 30; // ~0.5s @ 60fps
+    // Doubled from 30 → 120 frames (~2s @ 60fps). 30 frames wasn't enough
+    // because the user's CLICK that refocuses the window fires
+    // GetMouseButtonDown on the same frame OnApplicationFocus is delivered,
+    // and Unity occasionally delays processing inputs across the focus
+    // boundary by several frames.
+    const int FocusGraceFrameCount = 120;
     float _lastRealtime;
     bool _stickEdgeWas;
+    float _lastResetWallTime; // diagnostic — logs which input caused a reset
     void OnApplicationFocus(bool hasFocus) { if (hasFocus) _focusGraceFrames = FocusGraceFrameCount; }
     void OnApplicationPause (bool paused)  { if (!paused) _focusGraceFrames = FocusGraceFrameCount; }
 
@@ -157,11 +163,24 @@ public class MainMenuController : MonoBehaviour
                 bool stickEdge    = stickEdgeNow && !_stickEdgeWas;
                 _stickEdgeWas     = stickEdgeNow;
 
-                if (Input.anyKeyDown                  // any key DOWN this frame
-                    || Input.GetMouseButtonDown(0)    // mouse left click
-                    || Input.GetMouseButtonDown(1)    // mouse right click
-                    || stickEdge)                     // joystick first push
+                bool anyKeyDown = Input.anyKeyDown;
+                bool mouse0Down = Input.GetMouseButtonDown(0);
+                bool mouse1Down = Input.GetMouseButtonDown(1);
+
+                if (anyKeyDown || mouse0Down || mouse1Down || stickEdge)
                 {
+                    // Diagnostic: log WHICH source reset the timer so QA can
+                    // see if it's a real input or a phantom refocus event.
+                    // Throttled to one log per 2s of wall time.
+                    float now = Time.realtimeSinceStartup;
+                    if (now - _lastResetWallTime > 2f)
+                    {
+                        _lastResetWallTime = now;
+                        Debug.Log($"[MainMenu] Auto-start timer reset because: " +
+                                  $"anyKeyDown={anyKeyDown}, mouse0={mouse0Down}, " +
+                                  $"mouse1={mouse1Down}, stickEdge={stickEdge}. " +
+                                  $"(grace expired {Time.realtimeSinceStartup - _lastRealtime:F2}s ago)");
+                    }
                     _autoStartTimer = autoStartSeconds;
                 }
 
@@ -318,20 +337,23 @@ public class MainMenuController : MonoBehaviour
                 hue);
         }
 
-        // Buttons — gentle bob + press-release scale spring
+        // Buttons — subtle position bob ONLY. Scale used to be set here for
+        // a "press-release spring", but it fought with ArcadeUINavigator's
+        // selected-button scale-up. Result was: only LEVELS (which isn't
+        // touched by this script) showed the highlight scale, PLAY and QUIT
+        // didn't. Removing the scale-set here lets ArcadeUINavigator own all
+        // 3 buttons' scale uniformly — consistent highlight on every option.
         if (playRect != null)
         {
             float bob = Mathf.Sin(_idleTime * 1.8f) * 3f;
             playRect.anchoredPosition = _playBasePos + new Vector2(0f, bob);
             _playPressScale = Mathf.Lerp(_playPressScale, 1f, Time.deltaTime * 8f);
-            playRect.localScale = new Vector3(_playPressScale, _playPressScale, 1f);
         }
         if (quitRect != null)
         {
             float bob = Mathf.Sin(_idleTime * 1.8f + 0.6f) * 3f;
             quitRect.anchoredPosition = _quitBasePos + new Vector2(0f, bob);
             _quitPressScale = Mathf.Lerp(_quitPressScale, 1f, Time.deltaTime * 8f);
-            quitRect.localScale = new Vector3(_quitPressScale, _quitPressScale, 1f);
         }
 
         // Orbit puck — rotates around a 6-unit circle behind the menu
@@ -373,6 +395,13 @@ public class MainMenuController : MonoBehaviour
     IEnumerator FlashAndQuit(Color c)
     {
         yield return FlashRoutine(c);
+
+        // Try Luxodd's BackToSystem first — Application.Quit() is a no-op
+        // in WebGL (the cyan-flash-then-stuck Quit bug). If the bridge is
+        // present and connected, it returns us to the cabinet's game-list.
+        if (LuxoddGameBridge.Instance != null && LuxoddGameBridge.Instance.QuitToArcadeMenu())
+            yield break;
+
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
 #else

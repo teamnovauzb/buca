@@ -237,7 +237,11 @@ public class LevelSelectController : MonoBehaviour
     }
 
     int _focusGraceFrames;
-    const int FocusGraceFrameCount = 30; // ~0.5s @ 60fps
+    // Extended from 30 → 120 frames (~2s @ 60fps) for the same reason as
+    // MainMenuController: the click that refocuses the window fires
+    // GetMouseButtonDown on the same frame OnApplicationFocus delivers,
+    // and Unity's input pipeline takes a few frames to fully settle.
+    const int FocusGraceFrameCount = 120;
     float _lastRealtime;
     bool _stickEdgeWas;
 
