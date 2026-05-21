@@ -69,18 +69,9 @@ public class MainMenuController : MonoBehaviour
     void OnApplicationFocus(bool hasFocus) { if (hasFocus) _focusGraceFrames = FocusGraceFrameCount; }
     void OnApplicationPause (bool paused)  { if (!paused) _focusGraceFrames = FocusGraceFrameCount; }
 
-    void DetectRealtimeGap()
-    {
-        float now = Time.realtimeSinceStartup;
-        if (_lastRealtime > 0f && (now - _lastRealtime) > 0.5f)
-        {
-            // >500ms gap between Update calls = the game was paused / minimized
-            // / tab-switched. Arm focus-grace so input from the resume frame
-            // doesn't reset the auto-start timer.
-            _focusGraceFrames = FocusGraceFrameCount;
-        }
-        _lastRealtime = now;
-    }
+    // (DetectRealtimeGap inlined into TickAutoStart — the gap check now
+    // BLOCKS the same-frame input instead of just arming forward grace,
+    // which is what fixes the WebGL refocus-click leak.)
 
     void Start()
     {
@@ -124,10 +115,31 @@ public class MainMenuController : MonoBehaviour
     {
         if (autoStartSeconds <= 0f || _autoStarting) return;
 
-        // Check if we just resumed from an unannounced pause (editor tab
-        // switch, etc.) — arms focus-grace so the resumed-frame input
-        // doesn't reset the auto-start timer.
-        DetectRealtimeGap();
+        // ═══════════════════════════════════════════════════════════
+        // STEP 1 — REALTIME-GAP DETECTION (must run BEFORE input checks).
+        //
+        // WebGL buffers input events during window-unfocused / tab-hidden
+        // periods and REPLAYS them synchronously on the refocus frame.
+        // The mouse-down event from the click that refocused the window
+        // is ALREADY in this frame's input buffer when Update fires —
+        // arming "grace for future frames" via OnApplicationFocus doesn't
+        // protect this same-frame replay.
+        //
+        // Fix: compute the realtime gap UPFRONT. If >300ms passed since
+        // the last frame, this IS the refocus frame — skip ALL input
+        // checks on it AND arm forward grace. Don't trust focus callbacks
+        // (Unity's OnApplicationFocus is unreliable in WebGL).
+        // ═══════════════════════════════════════════════════════════
+        float now = Time.realtimeSinceStartup;
+        float gap = (_lastRealtime > 0f) ? (now - _lastRealtime) : 0f;
+        _lastRealtime = now;
+        bool wasJustRefocused = gap > 0.3f;
+        if (wasJustRefocused)
+        {
+            _focusGraceFrames = FocusGraceFrameCount;
+            Debug.Log($"[MainMenu] Realtime gap {gap:F2}s detected — armed {FocusGraceFrameCount}-frame " +
+                      "input grace + suppressed this frame's inputs (refocus protection).");
+        }
 
         // Resolve the level-select panel reference once it exists in the scene.
         if (_levelSelect == null)
@@ -136,50 +148,53 @@ public class MainMenuController : MonoBehaviour
 
         if (!levelSelectOpen)
         {
-            // Skip input checks during focus-grace frames so a window refocus
-            // doesn't reset the timer with phantom events.
-            if (_focusGraceFrames > 0)
+            // INPUT IS BLOCKED THIS FRAME IF EITHER:
+            //   (a) this is the refocus frame itself (gap > 0.3s), OR
+            //   (b) we're still inside the post-refocus grace window
+            bool blockInputThisFrame = wasJustRefocused || _focusGraceFrames > 0;
+
+            if (blockInputThisFrame)
             {
-                _focusGraceFrames--;
-                // Snapshot the CURRENT input state into the "was" trackers
-                // every grace frame. Without this, when grace ends with the
-                // stick still held (or a key still down from before refocus),
-                // the very next frame sees stickEdgeNow=true && _stickEdgeWas=false
-                // → registers as a fresh edge → resets the timer. Treating
-                // grace frames as "input was already in this state" prevents
-                // that phantom-edge fire.
+                if (_focusGraceFrames > 0) _focusGraceFrames--;
+                // Snapshot the CURRENT input state into "was" trackers so
+                // when grace ends with the stick still held / a key still
+                // down from before refocus, the very next frame doesn't see
+                // it as a fresh edge.
                 Vector2 graceStick = ArcadeInputAdapter.GetStick();
                 _stickEdgeWas = Mathf.Abs(graceStick.x) > 0.5f || Mathf.Abs(graceStick.y) > 0.5f;
             }
             else
             {
-                // EDGE-ONLY input detection. The previous design read held
-                // states (Input.anyKey, mouse axes, sustained joystick) which
-                // refocus + a single mouse-cursor jiggle would re-trigger
-                // every frame. Edge detection (down events only) is immune to
-                // refocus phantom events.
+                // EDGE-ONLY input detection on SPECIFIC keys (not anyKeyDown).
+                // Input.anyKeyDown is the WebGL replay leak: it returns true
+                // for any phantom KeyDown event WebGL synthesizes during the
+                // replay of buffered input. Specific keys (arrow, space, enter,
+                // escape) can't be falsely synthesized by the input replay.
                 Vector2 stick = ArcadeInputAdapter.GetStick();
                 bool stickEdgeNow = Mathf.Abs(stick.x) > 0.5f || Mathf.Abs(stick.y) > 0.5f;
                 bool stickEdge    = stickEdgeNow && !_stickEdgeWas;
                 _stickEdgeWas     = stickEdgeNow;
 
-                bool anyKeyDown = Input.anyKeyDown;
+                bool gameplayKeyDown =
+                    Input.GetKeyDown(KeyCode.Return)     || Input.GetKeyDown(KeyCode.Space) ||
+                    Input.GetKeyDown(KeyCode.Escape)     || Input.GetKeyDown(KeyCode.UpArrow) ||
+                    Input.GetKeyDown(KeyCode.DownArrow)  || Input.GetKeyDown(KeyCode.LeftArrow) ||
+                    Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.Tab);
                 bool mouse0Down = Input.GetMouseButtonDown(0);
                 bool mouse1Down = Input.GetMouseButtonDown(1);
+                bool arcadeButtonDown = ArcadeInputAdapter.ConfirmDown() ||
+                                        ArcadeInputAdapter.CancelDown();
 
-                if (anyKeyDown || mouse0Down || mouse1Down || stickEdge)
+                if (gameplayKeyDown || mouse0Down || mouse1Down || stickEdge || arcadeButtonDown)
                 {
-                    // Diagnostic: log WHICH source reset the timer so QA can
-                    // see if it's a real input or a phantom refocus event.
-                    // Throttled to one log per 2s of wall time.
-                    float now = Time.realtimeSinceStartup;
+                    // Diagnostic log throttled to 1 per 2s wall time
                     if (now - _lastResetWallTime > 2f)
                     {
                         _lastResetWallTime = now;
-                        Debug.Log($"[MainMenu] Auto-start timer reset because: " +
-                                  $"anyKeyDown={anyKeyDown}, mouse0={mouse0Down}, " +
-                                  $"mouse1={mouse1Down}, stickEdge={stickEdge}. " +
-                                  $"(grace expired {Time.realtimeSinceStartup - _lastRealtime:F2}s ago)");
+                        Debug.Log($"[MainMenu] Auto-start timer reset by: " +
+                                  $"gameplayKey={gameplayKeyDown}, mouse0={mouse0Down}, " +
+                                  $"mouse1={mouse1Down}, stickEdge={stickEdge}, " +
+                                  $"arcadeButton={arcadeButtonDown}. (gap={gap:F3}s)");
                     }
                     _autoStartTimer = autoStartSeconds;
                 }

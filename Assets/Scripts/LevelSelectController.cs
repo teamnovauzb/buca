@@ -259,44 +259,44 @@ public class LevelSelectController : MonoBehaviour
         _lastMousePos = Input.mousePosition;
     }
 
-    /// <summary>
-    /// Detects an unannounced pause via realtime gap. Editor tab switches
-    /// (Game tab → other tab) don't fire OnApplicationFocus or Pause but
-    /// DO leave a >500ms gap between Update calls — this catches that case.
-    /// </summary>
-    void DetectRealtimeGap()
-    {
-        float now = Time.realtimeSinceStartup;
-        if (_lastRealtime > 0f && (now - _lastRealtime) > 0.5f)
-            BeginFocusGrace();
-        _lastRealtime = now;
-    }
+    // (DetectRealtimeGap inlined into TickIdleAutoClose — the gap check
+    // now BLOCKS the same-frame input rather than just arming forward
+    // grace, fixing the WebGL refocus-click input-replay leak.)
 
     void TickIdleAutoClose()
     {
         if (idleAutoCloseSeconds <= 0f) return;
 
-        // Catch unannounced pauses (editor tab switch, breakpoint, etc.)
-        DetectRealtimeGap();
-
-        // During focus-grace frames, skip BOTH input detection AND the timer
-        // tick. We don't want the timer to keep counting down past the player
-        // either — they just literally can't see the game during alt-tab.
-        if (_focusGraceFrames > 0)
+        // STEP 1 — Realtime-gap detection. Must run BEFORE input checks.
+        // WebGL buffers + synchronously replays input on the refocus frame;
+        // the mouse-down that refocused the window is already in this
+        // frame's input buffer. Detecting the gap upfront and BLOCKING
+        // this frame's input is the only way to ignore the replay.
+        float now = Time.realtimeSinceStartup;
+        float gap = (_lastRealtime > 0f) ? (now - _lastRealtime) : 0f;
+        _lastRealtime = now;
+        bool wasJustRefocused = gap > 0.3f;
+        if (wasJustRefocused)
         {
-            _focusGraceFrames--;
+            _focusGraceFrames = FocusGraceFrameCount;
             _lastMousePos = Input.mousePosition;
-            // Snapshot input state every grace frame so a held stick / mouse
-            // button doesn't register as a fresh edge the moment grace ends.
+        }
+
+        // INPUT IS BLOCKED IF EITHER this is the refocus frame OR we're
+        // still in the post-refocus grace window.
+        bool blockInputThisFrame = wasJustRefocused || _focusGraceFrames > 0;
+        if (blockInputThisFrame)
+        {
+            if (_focusGraceFrames > 0) _focusGraceFrames--;
+            _lastMousePos = Input.mousePosition;
             Vector2 graceStick = ArcadeInputAdapter.GetStick();
             _stickEdgeWas = Mathf.Abs(graceStick.x) > 0.5f || Mathf.Abs(graceStick.y) > 0.5f;
             return;
         }
 
-        // EDGE-ONLY input detection. Previously held states (anyKey,
-        // mouse motion, sustained joystick, mouse button held) would
-        // re-trigger every frame after a refocus and reset the timer
-        // on phantom events. Edge detection requires fresh DOWN events.
+        // EDGE-ONLY input detection on SPECIFIC keys (not anyKeyDown).
+        // Input.anyKeyDown is the WebGL replay leak — replace with explicit
+        // gameplay keys that can't be falsely synthesized by input replay.
         Vector2 stick = ArcadeInputAdapter.GetStick();
         bool stickEdgeNow = Mathf.Abs(stick.x) > 0.5f || Mathf.Abs(stick.y) > 0.5f;
         bool stickEdge    = stickEdgeNow && !_stickEdgeWas;
@@ -314,9 +314,15 @@ public class LevelSelectController : MonoBehaviour
         bool mouseMoved = mouseDelta.sqrMagnitude > 2500f && mouseDelta.sqrMagnitude < 40000f;
         _lastMousePos = mp;
 
+        bool gameplayKeyDown =
+            Input.GetKeyDown(KeyCode.Return)     || Input.GetKeyDown(KeyCode.Space) ||
+            Input.GetKeyDown(KeyCode.Escape)     || Input.GetKeyDown(KeyCode.UpArrow) ||
+            Input.GetKeyDown(KeyCode.DownArrow)  || Input.GetKeyDown(KeyCode.LeftArrow) ||
+            Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.Tab);
+
         bool active = stickEdge
                     || anyArcadeButtonDown
-                    || Input.anyKeyDown
+                    || gameplayKeyDown
                     || mouseMoved
                     || Input.GetMouseButtonDown(0);
 
