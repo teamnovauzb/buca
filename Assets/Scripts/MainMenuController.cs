@@ -199,11 +199,27 @@ public class MainMenuController : MonoBehaviour
                     _autoStartTimer = autoStartSeconds;
                 }
 
-                // Arcade shortcuts only fire from the menu — not while the panel is up
-                // (the panel handles its own Green-button = back).
-                if (ArcadeInputAdapter.ConfirmDown()) { PlayGame(); return; }
-                if (ArcadeInputAdapter.CancelDown()) { QuitGame(); return; }
+                // NOTE: do NOT call PlayGame()/QuitGame() here on Confirm/Cancel.
+                // ArcadeUINavigator owns Black=confirm and invokes the FOCUSED
+                // button's onClick (PLAY→PlayGame, LEVELS→open panel, QUIT→QuitGame).
+                // The old blanket `ConfirmDown → PlayGame` fired regardless of
+                // which button was focused — so pressing Black on QUIT triggered
+                // BOTH QuitGame (via navigator) AND PlayGame (here), producing
+                // the "gameplay starts then the game quits itself" bug. Removed.
             }
+        }
+        else
+        {
+            // QA req #4: while the Level-Select panel is open, PAUSE the
+            // main-menu auto-start entirely. Previously the timer kept
+            // draining underneath the panel and would eventually fire
+            // PlayGame while the player was still in the level picker
+            // ("auto start ... from the level picker screen"). The panel
+            // has its OWN idle auto-start countdown — that's the only one
+            // that should run while it's open. Reset ours so the player
+            // gets a fresh 30s when they return to the main menu.
+            _autoStartTimer = autoStartSeconds;
+            return;
         }
 
         float prevTimer = _autoStartTimer;

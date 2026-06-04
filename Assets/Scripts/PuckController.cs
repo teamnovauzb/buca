@@ -228,8 +228,12 @@ public class PuckController : MonoBehaviour
     // including while Black is being held — power keeps building, aim stays live.
     [Header("Arcade input")]
     public float arcadeDeadzone = 0.2f;
-    [Tooltip("Seconds for Black-hold to fill the power meter from 0 to 100%.")]
-    public float chargeTimeToMax = 1.2f;
+    [Tooltip("Seconds for Black-hold to fill the power meter from 0 to 100%. " +
+             "QA req: raised to 2.0s so players have finer control over shot strength.")]
+    public float chargeTimeToMax = 2.0f;
+    [Tooltip("Minimum length (as a fraction of full power) the aim guide is drawn at " +
+             "BEFORE charging, so the player can see the throw direction before pressing fire.")]
+    [Range(0.1f, 0.6f)] public float aimGuideMinFraction = 0.35f;
     [Tooltip("Power must reach at least this fraction (0..1) for a release to count as a real shot.")]
     public float minChargeToFire = 0.05f;
 
@@ -322,25 +326,37 @@ public class PuckController : MonoBehaviour
             return;
         }
 
-        // 5) Visuals — aim line points where the puck WILL go; preview shows
-        //    full predicted bounce path; power arc fills with charge level.
+        // 5) Visuals.
+        //    QA req #2: the throw-direction guide must be visible BEFORE the
+        //    fire button is pressed. Previously the aim line + trajectory used
+        //    `_arcadePower` for their length, which is 0 until the player holds
+        //    Black — so the guide was invisible while just aiming. Now the aim
+        //    line + trajectory preview use a MINIMUM visual length
+        //    (aimGuideMinFraction) so the direction shows the moment the stick
+        //    is tilted. The POWER ARC still uses the real charge (empty → full)
+        //    so the player still sees the strength building separately.
         if (_isDragging && hasAim)
         {
-            Vector3 launchVec = _arcadeAimDir * _arcadePower * maxDragDistance;
-            // UpdatePreview / UpdatePowerArc were written for the mouse model
-            // where `drag` = pull-back direction (puck launches OPPOSITE).
-            // Pass -launchVec so internal inversion gives the correct direction.
-            Vector3 dragForVisuals = -launchVec;
-
+            // Aim line + trajectory: always visible at >= aimGuideMinFraction,
+            // growing toward full length as charge builds.
+            float guideFraction = Mathf.Max(_arcadePower, aimGuideMinFraction);
+            Vector3 aimVec = _arcadeAimDir * guideFraction * maxDragDistance;
             Vector3 origin = transform.position;
-            Vector3 target = origin + launchVec; // aim line points TOWARD shot direction
+            Vector3 target = origin + aimVec; // points TOWARD the shot direction
             if (aimLine != null)
             {
+                aimLine.enabled = true;
                 aimLine.SetPosition(0, origin);
                 aimLine.SetPosition(1, target);
             }
-            UpdatePreview(dragForVisuals);
-            UpdatePowerArc(dragForVisuals);
+            // UpdatePreview expects a mouse-model "pull-back" vector (launches
+            // OPPOSITE), so pass the negated aim vector.
+            UpdatePreview(-aimVec);
+
+            // Power arc: reflects ACTUAL charge — empty before holding Black,
+            // fills as power builds. Uses _arcadePower (not the guide minimum).
+            Vector3 powerVec = _arcadeAimDir * _arcadePower * maxDragDistance;
+            UpdatePowerArc(-powerVec);
         }
     }
 

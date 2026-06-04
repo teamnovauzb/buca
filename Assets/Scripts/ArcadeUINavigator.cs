@@ -113,9 +113,26 @@ public class ArcadeUINavigator : MonoBehaviour
         }
     }
 
+    LevelSelectController _levelSelect;
+
     void Update()
     {
         if (selectables == null || selectables.Length == 0) return;
+
+        // Stand down entirely while the Level-Select panel is open. The panel
+        // is a full-screen overlay with its OWN navigation + confirm + back.
+        // If this navigator kept running underneath, pressing Black/Green would
+        // ALSO fire the focused MAIN-MENU button (re-opening the panel, loading
+        // the game, etc.), and it would steal EventSystem selection — which is
+        // what broke the BACK button and caused timer/confirm conflicts.
+        if (_levelSelect == null)
+            _levelSelect = FindFirstObjectByType<LevelSelectController>(FindObjectsInactive.Include);
+        if (_levelSelect != null && _levelSelect.IsOpen)
+        {
+            // Clear our highlight so it doesn't linger behind the panel.
+            if (_outlineGO != null && _outlineGO.activeSelf) _outlineGO.SetActive(false);
+            return;
+        }
 
         // STEP 1 (was previously SyncIndexFromEventSystem) — moved BELOW
         // the input handling. Reason: when Unity's StandaloneInputModule
