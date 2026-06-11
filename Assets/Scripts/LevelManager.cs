@@ -132,6 +132,8 @@ public class LevelManager : MonoBehaviour
     int _shotCount;
     bool _puckWasStopped = true;
     float _dragHintAlpha;
+    bool _dragHintArcadeMode;
+    bool _dragHintTextInitialized;
 
     // Timer state
     float _timeRemaining;
@@ -441,6 +443,24 @@ public class LevelManager : MonoBehaviour
                     && puckRigidbody.linearVelocity.magnitude < 0.25f;
         float target = visible ? 1f : 0f;
         _dragHintAlpha = Mathf.MoveTowards(_dragHintAlpha, target, Time.deltaTime * 2.5f);
+
+        // QA req: the serialized "DRAG BACK TO AIM" text describes the MOUSE
+        // slingshot, but the arcade mechanic is tilt-the-stick-TOWARD-the-
+        // target + hold the button — the old text was actively misleading on
+        // the cabinet. Swap wording the moment arcade input is detected
+        // (cached so we only touch TMP when the mode actually flips).
+        if (dragHint != null)
+        {
+            bool arcade = LuxoddGameBridge.IsArcadeInputActive;
+            if (arcade != _dragHintArcadeMode || !_dragHintTextInitialized)
+            {
+                _dragHintArcadeMode = arcade;
+                _dragHintTextInitialized = true;
+                dragHint.text = arcade
+                    ? "TILT TO AIM  •  HOLD BUTTON TO FIRE"
+                    : "DRAG BACK TO AIM";
+            }
+        }
 
         if (dragHint != null)
         {
@@ -829,6 +849,13 @@ public class LevelManager : MonoBehaviour
                 PlayerPrefs.DeleteKey(PrefLevelStars + i);
                 PlayerPrefs.DeleteKey(PrefLevelScore + i);
             }
+
+        // Also wipe the SERVER copy. The Luxodd state sync merges with
+        // max(server, local), so without this the old server progress
+        // would simply flow back on the next session, silently undoing
+        // the reset the player just asked for.
+        if (luxoddBridge != null) luxoddBridge.ResetServerProgress();
+
         UnityEngine.SceneManagement.SceneManager.LoadScene(
             UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
     }

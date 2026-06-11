@@ -56,8 +56,15 @@ public class LevelCompletePanel : MonoBehaviour
     void Update()
     {
         if (!_waitingForInput) return;
-        if (Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(0)
-            || ArcadeInputAdapter.ConfirmDown())
+        // ANY arcade button skips (hint says "PRESS ANY BUTTON");
+        // Space / mouse retained silently for editor testing.
+        bool anyArcadeButton = false;
+        for (int i = 0; i < 8; i++)
+            if (ArcadeInputAdapter.GetButtonDown((ArcadeInputAdapter.Button)i))
+            { anyArcadeButton = true; break; }
+        if (anyArcadeButton
+            || Input.GetKeyDown(KeyCode.Space)
+            || Input.GetMouseButtonDown(0))
         {
             _skipped = true;
         }
@@ -178,7 +185,8 @@ public class LevelCompletePanel : MonoBehaviour
             if (autoAdvanceText != null)
             {
                 int secs = Mathf.CeilToInt(countdown);
-                autoAdvanceText.text = $"NEXT LEVEL IN {secs}s  |  PRESS SPACE";
+                // Gamepad-neutral — no "PRESS SPACE" on a physical arcade.
+                autoAdvanceText.text = $"NEXT LEVEL IN {secs}s  |  PRESS ANY BUTTON";
                 var c = autoAdvanceText.color;
                 c.a = 0.75f;
                 autoAdvanceText.color = c;

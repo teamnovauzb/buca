@@ -157,9 +157,17 @@ public class LevelSelectController : MonoBehaviour
         // Uses unscaled time so a paused popup doesn't cheese the timer.
         TickIdleAutoClose();
 
-        // GREEN button = Back  (skipped during input-grace window)
+        // BACK = GREEN, RED, or WHITE button (or Escape).
+        // GREEN is the canonical cabinet back button, but on generic
+        // gamepads Luxodd's fallback maps Green→leftShoulder — so QA
+        // pressing B/Circle (which maps to Red) got nothing ("back button
+        // not working using game pad"). Red and White are unused inside
+        // the picker, so accepting all three is safe on cabinet AND fixes
+        // gamepad testing. (Skipped during the input-grace window.)
         if (_inputGraceFramesAfterOpen <= 0 &&
             (ArcadeInputAdapter.GetButtonDown(ArcadeInputAdapter.Button.Green)
+             || ArcadeInputAdapter.GetButtonDown(ArcadeInputAdapter.Button.Red)
+             || ArcadeInputAdapter.CancelDown()   // White
              || Input.GetKeyDown(KeyCode.Escape)))
         {
             Hide();
@@ -314,17 +322,22 @@ public class LevelSelectController : MonoBehaviour
         bool mouseMoved = mouseDelta.sqrMagnitude > 2500f && mouseDelta.sqrMagnitude < 40000f;
         _lastMousePos = mp;
 
-        bool gameplayKeyDown =
+        // Same arcade-mode restriction as MainMenuController.TickAutoStart:
+        // once arcade input is detected, only arcade sources reset the idle
+        // timer — cabinet web shells can synthesize phantom keyboard/mouse
+        // events that were resetting the countdown by themselves.
+        bool arcadeMode = LuxoddGameBridge.IsArcadeInputActive;
+        bool gameplayKeyDown = !arcadeMode && (
             Input.GetKeyDown(KeyCode.Return)     || Input.GetKeyDown(KeyCode.Space) ||
             Input.GetKeyDown(KeyCode.Escape)     || Input.GetKeyDown(KeyCode.UpArrow) ||
             Input.GetKeyDown(KeyCode.DownArrow)  || Input.GetKeyDown(KeyCode.LeftArrow) ||
-            Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.Tab);
+            Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.Tab));
 
         bool active = stickEdge
                     || anyArcadeButtonDown
                     || gameplayKeyDown
-                    || mouseMoved
-                    || Input.GetMouseButtonDown(0);
+                    || (!arcadeMode && mouseMoved)
+                    || (!arcadeMode && Input.GetMouseButtonDown(0));
 
         if (active)
         {

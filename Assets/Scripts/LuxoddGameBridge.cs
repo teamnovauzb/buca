@@ -36,8 +36,11 @@ public class LuxoddGameBridge : MonoBehaviour
 #endif
 
     [Header("Settings")]
-    [Tooltip("Total number of levels in the game (for user state array sizing).")]
-    public int totalLevels = 5;
+    [Tooltip("Total number of levels in the game (for user state array sizing). " +
+             "Auto-raised at runtime from LevelManager.levelPrefabs.Length, so a stale " +
+             "serialized value can't truncate progress sync again (QA bug: levels 1-5 " +
+             "showed un-completed because this was 5 while the game had 15 levels).")]
+    public int totalLevels = 15;
 
     [Header("Leaderboard panel (shown before Continue popup on death/time-up)")]
     public LeaderboardPanel leaderboardPanel;
@@ -79,6 +82,17 @@ public class LuxoddGameBridge : MonoBehaviour
         {
             lm.luxoddBridge = this;
             Debug.Log($"[LuxoddBridge] Auto-wired to LevelManager in scene '{scene.name}'.");
+        }
+
+        // Keep totalLevels in sync with the real level count. The serialized
+        // scene value can go stale when levels are added (it sat at 5 while
+        // the game grew to 15) — and a too-small totalLevels makes the state
+        // sync below silently drop progress for the missing levels.
+        if (lm != null && lm.levelPrefabs != null && lm.levelPrefabs.Length > totalLevels)
+        {
+            Debug.Log($"[LuxoddBridge] totalLevels raised {totalLevels} → {lm.levelPrefabs.Length} " +
+                      "(from LevelManager.levelPrefabs).");
+            totalLevels = lm.levelPrefabs.Length;
         }
 
         // Find the LeaderboardPanel in the freshly-loaded scene (it's
@@ -461,21 +475,59 @@ public class LuxoddGameBridge : MonoBehaviour
     }
 
     /// <summary>
-    /// Copies server state into PlayerPrefs so existing LevelManager code
+    /// MERGES server state into PlayerPrefs so existing LevelManager code
     /// works unchanged. Called once after loading state from server.
+    ///
+    /// MERGE — never overwrite. The old version copied server values over
+    /// local PlayerPrefs verbatim, so a default/stale server state (all
+    /// zeros, or arrays sized for an older 5-level build) WIPED the local
+    /// stars/scores for those level indices. That was QA's "I completed
+    /// level 8 but the initial levels show un-completed" bug. Best-stars,
+    /// best-scores, and current-level are all monotonic in this game, so
+    /// max(server, local) is always the correct reconciliation.
     /// </summary>
     void ApplyServerStateToPlayerPrefs()
     {
         if (_serverState == null) return;
-        PlayerPrefs.SetInt("BucaCurrentLevel", _serverState.currentLevel);
+
+        int localCurrent = PlayerPrefs.GetInt("BucaCurrentLevel", 0);
+        PlayerPrefs.SetInt("BucaCurrentLevel", Mathf.Max(_serverState.currentLevel, localCurrent));
+
         for (int i = 0; i < totalLevels; i++)
         {
             if (_serverState.bestStars != null && i < _serverState.bestStars.Length)
-                PlayerPrefs.SetInt(LevelManager.PrefLevelStars + i, _serverState.bestStars[i]);
+            {
+                int local = PlayerPrefs.GetInt(LevelManager.PrefLevelStars + i, 0);
+                PlayerPrefs.SetInt(LevelManager.PrefLevelStars + i,
+                                   Mathf.Max(_serverState.bestStars[i], local));
+            }
             if (_serverState.bestScores != null && i < _serverState.bestScores.Length)
-                PlayerPrefs.SetInt(LevelManager.PrefLevelScore + i, _serverState.bestScores[i]);
+            {
+                int local = PlayerPrefs.GetInt(LevelManager.PrefLevelScore + i, 0);
+                PlayerPrefs.SetInt(LevelManager.PrefLevelScore + i,
+                                   Mathf.Max(_serverState.bestScores[i], local));
+            }
         }
         PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// Intentional progress wipe. Because ApplyServerStateToPlayerPrefs
+    /// MERGES with max(server, local), simply clearing PlayerPrefs isn't
+    /// enough — the next load/session would restore old progress from the
+    /// server. This zeroes the cached state AND pushes it to the server so
+    /// the wipe sticks. Called by LevelManager.ResetProgressAndReloadScene.
+    /// </summary>
+    public void ResetServerProgress()
+    {
+#if LUXODD_INTEGRATION
+        _serverState = CreateDefaultState();
+        if (!_connected) return;
+        string json = JsonConvert.SerializeObject(_serverState);
+        _commandHandler.SendSetUserDataRequestCommand(json,
+            () => Debug.Log("[LuxoddBridge] Server progress reset (zeros pushed)."),
+            (code, msg) => Debug.LogWarning($"[LuxoddBridge] ResetServerProgress failed: {code} {msg}"));
+#endif
     }
 
     /// <summary>
@@ -488,8 +540,13 @@ public class LuxoddGameBridge : MonoBehaviour
         if (!_connected || _serverState == null) return;
 
         _serverState.currentLevel = PlayerPrefs.GetInt("BucaCurrentLevel", 0);
-        if (_serverState.bestStars == null) _serverState.bestStars = new int[totalLevels];
-        if (_serverState.bestScores == null) _serverState.bestScores = new int[totalLevels];
+        // Resize (not just null-check) — server states written by an older
+        // 5-level build come back with 5-length arrays; indexing [5..14]
+        // below would throw IndexOutOfRange and the save would never happen.
+        if (_serverState.bestStars == null || _serverState.bestStars.Length < totalLevels)
+            System.Array.Resize(ref _serverState.bestStars, totalLevels);
+        if (_serverState.bestScores == null || _serverState.bestScores.Length < totalLevels)
+            System.Array.Resize(ref _serverState.bestScores, totalLevels);
         for (int i = 0; i < totalLevels; i++)
         {
             _serverState.bestStars[i] = PlayerPrefs.GetInt(LevelManager.PrefLevelStars + i, 0);

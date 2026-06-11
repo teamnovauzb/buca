@@ -175,15 +175,23 @@ public class MainMenuController : MonoBehaviour
                 bool stickEdge    = stickEdgeNow && !_stickEdgeWas;
                 _stickEdgeWas     = stickEdgeNow;
 
-                bool gameplayKeyDown =
+                bool arcadeButtonDown = ArcadeInputAdapter.ConfirmDown() ||
+                                        ArcadeInputAdapter.CancelDown();
+
+                // Once arcade input has been detected this session, ONLY
+                // arcade sources (stick edge + arcade buttons) may reset the
+                // timer. Cabinet web shells can synthesize phantom keyboard/
+                // mouse events from gamepad activity or focus changes — those
+                // were resetting the countdown with nobody at the keyboard
+                // (QA: "the auto start timer restarts from the main menu").
+                bool arcadeMode = LuxoddGameBridge.IsArcadeInputActive;
+                bool gameplayKeyDown = !arcadeMode && (
                     Input.GetKeyDown(KeyCode.Return)     || Input.GetKeyDown(KeyCode.Space) ||
                     Input.GetKeyDown(KeyCode.Escape)     || Input.GetKeyDown(KeyCode.UpArrow) ||
                     Input.GetKeyDown(KeyCode.DownArrow)  || Input.GetKeyDown(KeyCode.LeftArrow) ||
-                    Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.Tab);
-                bool mouse0Down = Input.GetMouseButtonDown(0);
-                bool mouse1Down = Input.GetMouseButtonDown(1);
-                bool arcadeButtonDown = ArcadeInputAdapter.ConfirmDown() ||
-                                        ArcadeInputAdapter.CancelDown();
+                    Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.Tab));
+                bool mouse0Down = !arcadeMode && Input.GetMouseButtonDown(0);
+                bool mouse1Down = !arcadeMode && Input.GetMouseButtonDown(1);
 
                 if (gameplayKeyDown || mouse0Down || mouse1Down || stickEdge || arcadeButtonDown)
                 {

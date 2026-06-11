@@ -74,9 +74,14 @@ public class LeaderboardPanel : MonoBehaviour
     void Update()
     {
         if (!_waitingForInput) return;
-        // Skip on: Space, Black button (BLACK = arcade Confirm), or mouse click.
-        if (Input.GetKeyDown(KeyCode.Space)
-            || ArcadeInputAdapter.ConfirmDown()
+        // Skip on: ANY arcade button (hint says "PRESS ANY BUTTON"), or
+        // Space / mouse click for editor testing.
+        bool anyArcadeButton = false;
+        for (int i = 0; i < 8; i++)
+            if (ArcadeInputAdapter.GetButtonDown((ArcadeInputAdapter.Button)i))
+            { anyArcadeButton = true; break; }
+        if (anyArcadeButton
+            || Input.GetKeyDown(KeyCode.Space)
             || Input.GetMouseButtonDown(0))
         {
             _skipped = true;
@@ -241,7 +246,10 @@ public class LeaderboardPanel : MonoBehaviour
             if (continueHintText != null)
             {
                 int secs = Mathf.CeilToInt(countdown);
-                continueHintText.text = $"CONTINUE IN {secs}s  |  PRESS SPACE";
+                // Gamepad-neutral wording — QA req: no "PRESS SPACE" on a
+                // physical arcade (there is no keyboard). Any arcade button
+                // skips; Space still works silently for editor testing.
+                continueHintText.text = $"CONTINUE IN {secs}s  |  PRESS ANY BUTTON";
             }
             yield return null;
         }
