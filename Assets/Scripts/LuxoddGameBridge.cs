@@ -132,6 +132,23 @@ public class LuxoddGameBridge : MonoBehaviour
 #if LUXODD_INTEGRATION
     void ConnectToServer()
     {
+#if UNITY_EDITOR
+        // No Luxodd cabinet/server exists in the Editor, so a live connection
+        // just spams "Unable to connect to the remote server". Skip it here —
+        // the game runs in standalone mode (PlayerPrefs). The real cabinet
+        // build (not UNITY_EDITOR) still connects normally.
+        Debug.Log("[LuxoddBridge] Editor: skipping live server connection (standalone mode).");
+        return;
+#else
+        // Outside the cabinet the WebSocket service may be unassigned — run
+        // disconnected instead of NullReferencing. Progress saves via PlayerPrefs.
+        if (_webSocketService == null)
+        {
+            Debug.LogWarning("[LuxoddBridge] No WebSocketService assigned — running disconnected. " +
+                             "Progress is saved locally via PlayerPrefs.");
+            return;
+        }
+
         _webSocketService.ConnectToServer(
             () =>
             {
@@ -145,6 +162,7 @@ public class LuxoddGameBridge : MonoBehaviour
                 Debug.LogError("[LuxoddBridge] Connection failed.");
                 _connected = false;
             });
+#endif
     }
 #endif
 

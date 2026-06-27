@@ -3,24 +3,20 @@ using UnityEditor;
 using System.IO;
 
 /// <summary>
-/// Editor-only utility that builds Levels 06–15 as prefab assets.
-/// Each level introduces a new gameplay mechanic and ramps the
-/// difficulty over the previous one. Run via the menu:
+/// Editor-only utility that builds ALL 15 Buca levels as maze-style prefab
+/// assets, named and difficulty-ramped:
 ///
-///   RealBuca → Generate Levels 06-15
+///   RealBuca → Generate 15 Maze Levels
 ///
-/// Output goes to Assets/Prefabs/Levels/Level_NN.prefab. Existing
-/// files with the same names are overwritten — re-run safely after
-/// tweaking any of the BuildLevelXX methods.
+/// Output overwrites Assets/Prefabs/Levels/Level_01..Level_15.prefab in place,
+/// so the existing LevelManager.levelPrefabs wiring keeps working. Each level is
+/// a compact method using the WX/WZ/WA wall helpers + mechanic helpers, so the
+/// layouts are easy to read and tweak. Re-run safely after editing any LNN().
 ///
-/// After generation, drag the new prefabs into LevelManager.levelPrefabs
-/// so they appear in the Game scene.
+/// Field: interior x in [-4.5, 4.5], z in [-7, 7]; boundary rails auto-added.
 /// </summary>
 public static class LevelPrefabGenerator
 {
-    // ─────────────────────────────────────────────────────────
-    // Field constants — must match what LevelManager expects
-    // ─────────────────────────────────────────────────────────
     const float FieldW = 4.5f;
     const float FieldL = 7f;
     const float TubeRadius = 0.12f;
@@ -29,54 +25,69 @@ public static class LevelPrefabGenerator
     const string PrefabFolder = "Assets/Prefabs/Levels";
     const string MaterialFolder = "Assets/Materials";
 
-    // Material handles loaded once per generation
     static Material _railMat, _deadlyMat, _padMat, _holeMat, _ringMat, _bevelMat;
     static Material[] _floorPalette;
+    static int _levelNum = 1; // current level (1..30) — drives the difficulty ramp
 
-    [MenuItem("RealBuca/Generate Levels 06-15")]
+    [MenuItem("RealBuca/Generate All Levels (30)")]
     public static void GenerateAll()
     {
-        if (!Directory.Exists(PrefabFolder))
-            Directory.CreateDirectory(PrefabFolder);
-
+        if (!Directory.Exists(PrefabFolder)) Directory.CreateDirectory(PrefabFolder);
         LoadMaterials();
 
-        BuildAndSave("Level_06", BuildLevel06_BouncePadIntro);
-        BuildAndSave("Level_07", BuildLevel07_MovingWall);
-        BuildAndSave("Level_08", BuildLevel08_SpeedBoost);
-        BuildAndSave("Level_09", BuildLevel09_Windmill);
-        BuildAndSave("Level_10", BuildLevel10_WindZone);
-        BuildAndSave("Level_11", BuildLevel11_PadWindCombo);
-        BuildAndSave("Level_12", BuildLevel12_Teleporter);
-        BuildAndSave("Level_13", BuildLevel13_GravityWell);
-        BuildAndSave("Level_14", BuildLevel14_GateTiming);
-        BuildAndSave("Level_15", BuildLevel15_Boss);
+        BuildAndSave("Level_01", L1_FirstShot);
+        BuildAndSave("Level_02", L2_EasyCurve);
+        BuildAndSave("Level_03", L3_CornerPocket);
+        BuildAndSave("Level_04", L4_ZigZag);
+        BuildAndSave("Level_05", L5_NarrowEscape);
+        BuildAndSave("Level_06", L6_DoubleBounce);
+        BuildAndSave("Level_07", L7_TheFunnel);
+        BuildAndSave("Level_08", L8_SnakePath);
+        BuildAndSave("Level_09", L9_Crossroads);
+        BuildAndSave("Level_10", L10_Labyrinth);
+        BuildAndSave("Level_11", L11_PrecisionRun);
+        BuildAndSave("Level_12", L12_SharpAngles);
+        BuildAndSave("Level_13", L13_GravityTest);
+        BuildAndSave("Level_14", L14_FinalMaze);
+        BuildAndSave("Level_15", L15_MasterBuca);
+        // ── Expansion: 15 harder levels (16–30) ──
+        BuildAndSave("Level_16", L16_TwinGaps);
+        BuildAndSave("Level_17", L17_BumperAlley);
+        BuildAndSave("Level_18", L18_SpinningGauntlet);
+        BuildAndSave("Level_19", L19_WindTunnel);
+        BuildAndSave("Level_20", L20_TeleportMaze);
+        BuildAndSave("Level_21", L21_BounceChain);
+        BuildAndSave("Level_22", L22_MovingCross);
+        BuildAndSave("Level_23", L23_GravityBend);
+        BuildAndSave("Level_24", L24_DeadlyCorridor);
+        BuildAndSave("Level_25", L25_SpeedRun);
+        BuildAndSave("Level_26", L26_Pinball);
+        BuildAndSave("Level_27", L27_TwinWindmills);
+        BuildAndSave("Level_28", L28_TheVault);
+        BuildAndSave("Level_29", L29_HazardGauntlet);
+        BuildAndSave("Level_30", L30_GrandFinale);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-
         EditorUtility.DisplayDialog("Level Generator",
-            "Generated Level_06 through Level_15 in Assets/Prefabs/Levels.\n\n" +
-            "Drag them into LevelManager.levelPrefabs (in order) to wire them up.",
+            "Rebuilt all 30 levels (Level_01–Level_30) in Assets/Prefabs/Levels.\n\n" +
+            "Next: run RealBuca → Wire All Levels (assigns the 30 prefabs to LevelManager),\n" +
+            "then RealBuca → Rebuild Level Grid (30) to grow the picker to 30 tiles.",
             "OK");
     }
 
     static void LoadMaterials()
     {
-        _railMat   = LoadMat("Rail_White");
+        _railMat = LoadMat("Rail_White");
         _deadlyMat = LoadMat("Deadly_Pink");
-        _padMat    = LoadMat("Pad_Green");
-        _holeMat   = LoadMat("Hole_Dark");
-        _ringMat   = LoadMat("Hole_Ring");
-        _bevelMat  = LoadMat("Table_Edge");
-        _floorPalette = new Material[]
+        _padMat = LoadMat("Pad_Green");
+        _holeMat = LoadMat("Hole_Dark");
+        _ringMat = LoadMat("Hole_Ring");
+        _bevelMat = LoadMat("Table_Edge");
+        _floorPalette = new[]
         {
-            LoadMat("Floor_Teal"),
-            LoadMat("Floor_Magenta"),
-            LoadMat("Floor_Orange"),
-            LoadMat("Floor_Blue"),
-            LoadMat("Floor_Green"),
-            LoadMat("Floor_Purple"),
+            LoadMat("Floor_Teal"), LoadMat("Floor_Magenta"), LoadMat("Floor_Orange"),
+            LoadMat("Floor_Blue"), LoadMat("Floor_Green"), LoadMat("Floor_Purple"),
             LoadMat("Floor_DarkPurple"),
         };
     }
@@ -90,247 +101,376 @@ public static class LevelPrefabGenerator
 
     static void BuildAndSave(string name, System.Action<GameObject> builder)
     {
+        int.TryParse(name.Substring(name.Length - 2), out _levelNum); // "Level_07" → 7
         var root = new GameObject(name);
         builder(root);
-        string path = $"{PrefabFolder}/{name}.prefab";
-        PrefabUtility.SaveAsPrefabAsset(root, path);
+        PrefabUtility.SaveAsPrefabAsset(root, $"{PrefabFolder}/{name}.prefab");
         Object.DestroyImmediate(root);
-        Debug.Log($"[LevelPrefabGenerator] Saved {path}");
     }
 
     // ═══════════════════════════════════════════════════════════
-    // LEVELS — each level is a single static method that builds
-    // the GameObject hierarchy under `root`. The prefab is saved
-    // by BuildAndSave after the builder returns.
+    // Compact helpers — keep the level layouts readable
     // ═══════════════════════════════════════════════════════════
-
-    /// <summary>Level 06 — Bounce Pad introduction. Easy.</summary>
-    static void BuildLevel06_BouncePadIntro(GameObject root)
+    static void Base(GameObject r, int floor) { BuildFloor(r, _floorPalette[floor]); BuildBoundary(r); }
+    static void Puck(GameObject r, float x, float z) => BuildPuckStart(r, new Vector3(x, 0.08f, z));
+    static void Hole(GameObject r, float x, float z, float ring)
     {
-        BuildBase(root, _floorPalette[0]);
-        BuildPuckStart(root, new Vector3(0f, 0.08f, -5.5f));
-        BuildHole(root, new Vector3(2.5f, 0.06f, 5f), 1.15f);
-
-        // Single bounce pad pointing toward the hole's quadrant
-        Vector3 padPos = new Vector3(-2.0f, 0.05f, 0f);
-        Vector3 padForward = (new Vector3(2.5f, 0.05f, 5f) - padPos).normalized;
-        BuildBouncePad(root, padPos, padForward, 14f);
-
-        // One simple wall to teach there's a route to plan
-        AddTube(root, "Wall_1", new Vector3(0f, TubeY, 2.5f), Quaternion.Euler(0,0,90), 2.4f, _railMat, false);
+        // Smooth difficulty ramp across all 30 levels: the hole shrinks
+        // linearly from L1 (forgiving) to L30 (tight) — easy → hard, never
+        // brutal. The per-level 'ring' is kept as a small relative nudge so
+        // precision levels still read a touch tighter than their neighbors.
+        float curve = Mathf.Lerp(1.16f, 0.78f, (Mathf.Clamp(_levelNum, 1, 30) - 1) / 29f);
+        float finalRing = Mathf.Clamp(curve + (ring - 0.9f) * 0.25f, 0.72f, 1.18f);
+        BuildHole(r, new Vector3(x, 0.06f, z), finalRing);
     }
 
-    /// <summary>Level 07 — Moving Wall introduction. Easy-medium.</summary>
-    static void BuildLevel07_MovingWall(GameObject root)
+    static void WX(GameObject r, string n, float x, float z, float len, bool deadly = false) =>
+        AddTube(r, n, new Vector3(x, TubeY, z), Quaternion.Euler(0, 0, 90), len, deadly ? _deadlyMat : _railMat, deadly);
+    static void WZ(GameObject r, string n, float x, float z, float len, bool deadly = false) =>
+        AddTube(r, n, new Vector3(x, TubeY, z), Quaternion.Euler(90, 0, 0), len, deadly ? _deadlyMat : _railMat, deadly);
+    static void WA(GameObject r, string n, float x, float z, float len, float angle, bool deadly = false) =>
+        AddTube(r, n, new Vector3(x, TubeY, z), Quaternion.Euler(0, angle, 90), len, deadly ? _deadlyMat : _railMat, deadly);
+
+    static void Pad(GameObject r, float x, float z, float tx, float tz, float speed)
+    { var p = new Vector3(x, 0.05f, z); BuildBouncePad(r, p, (new Vector3(tx, 0.05f, tz) - p).normalized, speed); }
+    static void Boost(GameObject r, float x, float z, float tx, float tz, float amt)
+    { var p = new Vector3(x, 0.18f, z); BuildSpeedBoost(r, p, (new Vector3(tx, 0.18f, tz) - p).normalized, amt); }
+    static void MovWall(GameObject r, float x, float z, float len, char axis, float dist, float cycle, float phase, bool deadly = false)
+    { var w = BuildMovingWall(r, new Vector3(x, TubeY, z), len, axis == 'X' ? Vector3.right : Vector3.forward, dist, cycle, phase); if (deadly) MakeDeadly(w); }
+    static void RotWall(GameObject r, float x, float z, float len, float speed) => BuildRotatingWall(r, new Vector3(x, TubeY, z), len, speed);
+    static void Wind(GameObject r, float x, float z, float sx, float sz, float tx, float tz, float force) =>
+        BuildWindZone(r, new Vector3(x, 0.4f, z), new Vector3(sx, 1f, sz), new Vector3(tx, 0, tz).normalized, force);
+    static void Tele(GameObject r, float ax, float az, float bx, float bz)
     {
-        BuildBase(root, _floorPalette[1]);
-        BuildPuckStart(root, new Vector3(0f, 0.08f, -5.5f));
-        BuildHole(root, new Vector3(0f, 0.06f, 5.5f), 1.1f);
-
-        // One moving wall slides L-R across the middle of the field
-        BuildMovingWall(root, new Vector3(0f, TubeY, 1.5f),
-                        lengthAlongLocalY: 2.6f,
-                        axis: Vector3.right,
-                        distance: 3.5f,
-                        cycleSeconds: 2.6f,
-                        phase: 0f);
-
-        // A static frame bracket so the field reads as "thread the gap"
-        AddTube(root, "Wall_Side_L", new Vector3(-2.8f, TubeY, -1f), Quaternion.Euler(90,0,0), 2.4f, _railMat, false);
-        AddTube(root, "Wall_Side_R", new Vector3( 2.8f, TubeY, -1f), Quaternion.Euler(90,0,0), 2.4f, _railMat, false);
+        var a = BuildTeleporter(r, "Teleport_A", new Vector3(ax, 0.18f, az), Vector3.forward);
+        var b = BuildTeleporter(r, "Teleport_B", new Vector3(bx, 0.18f, bz), Vector3.forward);
+        a.GetComponent<Teleporter>().partner = b.GetComponent<Teleporter>();
+        b.GetComponent<Teleporter>().partner = a.GetComponent<Teleporter>();
     }
+    static void Grav(GameObject r, float x, float z, float range, float strength) => BuildGravityWell(r, new Vector3(x, 0.18f, z), range, strength);
 
-    /// <summary>Level 08 — Speed Boost intro. Hole far away, boost makes it reachable.</summary>
-    static void BuildLevel08_SpeedBoost(GameObject root)
+    static void MakeDeadly(GameObject w)
     {
-        BuildBase(root, _floorPalette[2]);
-        BuildPuckStart(root, new Vector3(-3f, 0.08f, -5.5f));
-        BuildHole(root, new Vector3(3.2f, 0.06f, 5.2f), 1.05f);
-
-        // Boost ring pointing toward upper-right (the hole)
-        Vector3 boostPos = new Vector3(0f, 0.18f, -1.5f);
-        Vector3 boostFwd = (new Vector3(3.2f, 0.18f, 5.2f) - boostPos).normalized;
-        BuildSpeedBoost(root, boostPos, boostFwd, boostAmount: 9f);
-
-        // Two cosmetic walls flanking the boost so the player knows to enter
-        AddTube(root, "Wall_BoostL", new Vector3(-1.6f, TubeY, -1.5f), Quaternion.Euler(90,0,0), 1.4f, _railMat, false);
-        AddTube(root, "Wall_BoostR", new Vector3( 1.6f, TubeY, -1.5f), Quaternion.Euler(90,0,0), 1.4f, _railMat, false);
-
-        // A wall partway up to require the boost (otherwise the puck stops short)
-        AddTube(root, "Wall_Block", new Vector3(0f, TubeY, 3.5f), Quaternion.Euler(0,0,90), 3.5f, _railMat, false);
-    }
-
-    /// <summary>Level 09 — Rotating windmill in center. Medium.</summary>
-    static void BuildLevel09_Windmill(GameObject root)
-    {
-        BuildBase(root, _floorPalette[3]);
-        BuildPuckStart(root, new Vector3(0f, 0.08f, -5.5f));
-        BuildHole(root, new Vector3(0f, 0.06f, 5.5f), 1.05f);
-
-        // Windmill — long capsule that rotates around Y
-        BuildRotatingWall(root, new Vector3(0f, TubeY, 0f), length: 3.2f,
-                          rotationSpeed: 65f);
-
-        // A pair of corner walls to channel the puck toward the windmill
-        AddTube(root, "Wall_NEL", new Vector3(-2.8f, TubeY,  2.2f), Quaternion.Euler(0, 30, 90), 2.0f, _railMat, false);
-        AddTube(root, "Wall_NER", new Vector3( 2.8f, TubeY,  2.2f), Quaternion.Euler(0,-30, 90), 2.0f, _railMat, false);
-    }
-
-    /// <summary>Level 10 — Wind Zone. Sideways wind pushes shots off course.</summary>
-    static void BuildLevel10_WindZone(GameObject root)
-    {
-        BuildBase(root, _floorPalette[4]);
-        BuildPuckStart(root, new Vector3(0f, 0.08f, -5.5f));
-        BuildHole(root, new Vector3(-3f, 0.06f, 5f), 1.0f);
-
-        // Wind zone covering the middle third, blowing right (+X)
-        BuildWindZone(root, new Vector3(0f, 0.4f, 1f),
-                      size: new Vector3(8.5f, 1.0f, 4.0f),
-                      forward: Vector3.right,
-                      forceMagnitude: 7f);
-
-        // Visual marker bars indicating wind direction
-        AddTube(root, "Wall_Stop", new Vector3(2.5f, TubeY, 4.0f), Quaternion.Euler(90,0,0), 1.6f, _railMat, false);
-    }
-
-    /// <summary>Level 11 — Wind + chained Bounce Pads. Medium-hard.</summary>
-    static void BuildLevel11_PadWindCombo(GameObject root)
-    {
-        BuildBase(root, _floorPalette[5]);
-        BuildPuckStart(root, new Vector3(-3f, 0.08f, -5.5f));
-        BuildHole(root, new Vector3(3f, 0.06f, 5f), 0.95f);
-
-        // Wind zone blowing left (-X) — fights the puck's natural arc
-        BuildWindZone(root, new Vector3(0f, 0.4f, 0f),
-                      size: new Vector3(9.0f, 1.0f, 6.0f),
-                      forward: -Vector3.right,
-                      forceMagnitude: 8f);
-
-        // Two pads chained: pad 1 redirects toward pad 2, pad 2 toward hole
-        Vector3 pad1 = new Vector3(-2.5f, 0.05f, -2f);
-        Vector3 pad2 = new Vector3( 2.0f, 0.05f,  1f);
-        BuildBouncePad(root, pad1, (pad2 - pad1).normalized, 13f);
-        Vector3 holePos = new Vector3(3f, 0.05f, 5f);
-        BuildBouncePad(root, pad2, (holePos - pad2).normalized, 13f);
-
-        // One deadly wall to punish a wide shot
-        AddTube(root, "Deadly_1", new Vector3(0f, TubeY, 3.5f), Quaternion.Euler(0,0,90), 3.0f, _deadlyMat, true);
-    }
-
-    /// <summary>Level 12 — Teleporter pair, hole behind a wall. Medium-hard.</summary>
-    static void BuildLevel12_Teleporter(GameObject root)
-    {
-        BuildBase(root, _floorPalette[6]);
-        BuildPuckStart(root, new Vector3(-3f, 0.08f, -5.5f));
-        BuildHole(root, new Vector3(0f, 0.06f, 4f), 1.0f);
-
-        // Hole is walled off behind a horizontal barrier with no gap
-        AddTube(root, "Wall_HoleGuard1", new Vector3(-2f, TubeY, 2f), Quaternion.Euler(0,0,90), 2.4f, _railMat, false);
-        AddTube(root, "Wall_HoleGuard2", new Vector3( 2f, TubeY, 2f), Quaternion.Euler(0,0,90), 2.4f, _railMat, false);
-        AddTube(root, "Wall_HoleGuardC", new Vector3( 0f, TubeY, 2.2f), Quaternion.Euler(0,0,90), 1.6f, _deadlyMat, true);
-
-        // Entry teleporter — puck side
-        var tpA = BuildTeleporter(root, "Teleport_A", new Vector3(2.5f, 0.18f, -2f),
-                                  facing: Vector3.forward);
-        // Exit teleporter — beyond the wall, facing toward hole
-        var tpB = BuildTeleporter(root, "Teleport_B", new Vector3(0f, 0.18f, 3.2f),
-                                  facing: Vector3.forward);
-        // Wire the pair
-        var tpAComp = tpA.GetComponent<Teleporter>();
-        var tpBComp = tpB.GetComponent<Teleporter>();
-        tpAComp.partner = tpBComp;
-        tpBComp.partner = tpAComp;
-    }
-
-    /// <summary>Level 13 — Gravity Well + scattered deadlies. Hard.</summary>
-    static void BuildLevel13_GravityWell(GameObject root)
-    {
-        BuildBase(root, _floorPalette[0]);
-        BuildPuckStart(root, new Vector3(0f, 0.08f, -5.5f));
-        BuildHole(root, new Vector3(2.5f, 0.06f, 4.5f), 0.95f);
-
-        // Gravity well at midfield — bends shots toward center
-        BuildGravityWell(root, new Vector3(-0.5f, 0.18f, 1f), range: 3f, strength: 11f);
-
-        // Three deadly bars the puck has to thread between
-        AddTube(root, "Deadly_1", new Vector3(-3f, TubeY, 0f), Quaternion.Euler(0,0,90), 2.0f, _deadlyMat, true);
-        AddTube(root, "Deadly_2", new Vector3( 3f, TubeY, 2.0f), Quaternion.Euler(0,0,90), 2.0f, _deadlyMat, true);
-        AddTube(root, "Deadly_3", new Vector3(-1.0f, TubeY, 4.0f), Quaternion.Euler(0,0,90), 2.4f, _deadlyMat, true);
-    }
-
-    /// <summary>Level 14 — Three alternating disappearing wall gates. Hard.</summary>
-    static void BuildLevel14_GateTiming(GameObject root)
-    {
-        BuildBase(root, _floorPalette[1]);
-        BuildPuckStart(root, new Vector3(0f, 0.08f, -5.5f));
-        BuildHole(root, new Vector3(0f, 0.06f, 5.5f), 0.95f);
-
-        // 3 disappearing gates at z = -1, 1.5, 4 — phased so only one
-        // line through is open at any moment
-        BuildDisappearingGate(root, "Gate_1", zPos: -1f, phase: 0f,    onDur: 1.4f, offDur: 1.4f);
-        BuildDisappearingGate(root, "Gate_2", zPos:  1.5f, phase: 1.0f, onDur: 1.4f, offDur: 1.4f);
-        BuildDisappearingGate(root, "Gate_3", zPos:  4f,  phase: 2.0f, onDur: 1.4f, offDur: 1.4f);
-
-        // Static side rails to channel the puck
-        AddTube(root, "Wall_SideL", new Vector3(-1.5f, TubeY, 0f), Quaternion.Euler(90,0,0), 6.0f, _railMat, false);
-        AddTube(root, "Wall_SideR", new Vector3( 1.5f, TubeY, 0f), Quaternion.Euler(90,0,0), 6.0f, _railMat, false);
-    }
-
-    /// <summary>Level 15 — Boss level: small hole, all mechanics, deadly walls. Very hard.</summary>
-    static void BuildLevel15_Boss(GameObject root)
-    {
-        BuildBase(root, _floorPalette[2]);
-        BuildPuckStart(root, new Vector3(0f, 0.08f, -5.5f));
-        BuildHole(root, new Vector3(-3f, 0.06f, 5f), 0.7f);   // very small hole
-
-        // Wind from the right pushing left — combats every shot
-        BuildWindZone(root, new Vector3(1f, 0.4f, 0f),
-                      size: new Vector3(7f, 1f, 8f),
-                      forward: -Vector3.right,
-                      forceMagnitude: 6f);
-
-        // Moving deadly wall sliding L-R near the hole
-        var movingDeadly = BuildMovingWall(root, new Vector3(0f, TubeY, 3.0f),
-                                           lengthAlongLocalY: 2.4f,
-                                           axis: Vector3.right,
-                                           distance: 4.5f,
-                                           cycleSeconds: 2.0f,
-                                           phase: 0f);
-        // Re-tag as deadly: replace material + add DeadlyTrigger
-        var mr = movingDeadly.GetComponent<MeshRenderer>();
+        var mr = w.GetComponent<MeshRenderer>();
         if (mr != null && _deadlyMat != null) mr.sharedMaterial = _deadlyMat;
-        movingDeadly.GetComponent<Collider>().isTrigger = true;
-        var rl = movingDeadly.GetComponent<RailLight>();
+        w.GetComponent<Collider>().isTrigger = true;
+        var rl = w.GetComponent<RailLight>();
         if (rl != null) Object.DestroyImmediate(rl);
-        movingDeadly.AddComponent<DeadlyTrigger>();
-
-        // Bounce pad to redirect against the wind
-        Vector3 padPos = new Vector3(2.5f, 0.05f, -2f);
-        Vector3 holePos = new Vector3(-3f, 0.05f, 5f);
-        BuildBouncePad(root, padPos, (holePos - padPos).normalized, 16f);
-
-        // Rotating windmill blocking the direct line
-        BuildRotatingWall(root, new Vector3(-1.5f, TubeY, 1f), length: 2.6f, rotationSpeed: 80f);
-
-        // Two static deadlies for extra danger
-        AddTube(root, "Deadly_Wall1", new Vector3(2.5f, TubeY, 4f), Quaternion.Euler(0,0,90), 2.0f, _deadlyMat, true);
-        AddTube(root, "Deadly_Wall2", new Vector3(-1.0f, TubeY, -2f), Quaternion.Euler(90,0,0), 2.0f, _deadlyMat, true);
+        w.AddComponent<DeadlyTrigger>();
     }
 
     // ═══════════════════════════════════════════════════════════
-    // Primitive builders — same hierarchy contract LevelManager
-    // expects (Floor, Hole, Hole_Ring, PuckStart child names).
+    // THE 15 LEVELS  (coordinates from the verified design pass)
     // ═══════════════════════════════════════════════════════════
-    static void BuildBase(GameObject root, Material floorMat)
+
+    // Balanced "not too easy / not too hard" pass — each level a distinct
+    // strategy, holes kept fair (0.8–1.05), a gentle ramp 1→15.
+
+    static void L1_FirstShot(GameObject r)        // 1. Straight shot (with a guide funnel)
     {
-        BuildFloor(root, floorMat);
-        BuildBoundary(root);
+        Base(r, 0); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.4f, 1.05f);
+        WA(r, "Guide_L", -1.5f, 4.1f, 2.6f, 35f);
+        WA(r, "Guide_R", 1.5f, 4.1f, 2.6f, -35f);
+        WX(r, "Nudge_L", -2.9f, -0.5f, 1.8f);
+        WX(r, "Nudge_R", 2.9f, 1.5f, 1.8f);
     }
 
+    static void L2_EasyCurve(GameObject r)        // 2. Single obstacle — go around the block
+    {
+        Base(r, 2); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.3f, 1.0f);
+        WX(r, "Block", 0f, 0.3f, 4f);
+        WX(r, "Lower_Nudge", -1.6f, -2.6f, 2.2f);
+    }
+
+    static void L3_CornerPocket(GameObject r)     // 3. Angled reflection — bank the shot
+    {
+        Base(r, 4); Puck(r, -2.8f, -5.5f); Hole(r, 2.8f, 5.0f, 1.05f);
+        WA(r, "Reflector", 0.3f, 0.8f, 5.5f, -42f);
+        WZ(r, "Hole_Backstop", 3.6f, 4.2f, 3f);
+        WX(r, "Lower_Wall", -2.2f, -2.6f, 2.6f);
+    }
+
+    static void L4_ZigZag(GameObject r)           // 4. Narrow gap — thread two offset gaps
+    {
+        Base(r, 3); Puck(r, 0f, -5.6f); Hole(r, 0f, 5.4f, 1.0f);
+        WX(r, "Gap1_L", -2.6f, -1f, 4f);
+        WX(r, "Gap1_R", 2.6f, -1f, 4f);
+        WX(r, "Gap2_L", -1.9f, 3f, 5.2f);
+        WX(r, "Gap2_R", 3.4f, 3f, 2f);
+    }
+
+    static void L5_NarrowEscape(GameObject r)     // 5. Multiple barriers — a field of pillars
+    {
+        Base(r, 4); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.3f, 0.95f);
+        WZ(r, "P1", -2.2f, -2.5f, 2.2f);
+        WX(r, "P2", 1.3f, -1.3f, 2.2f);
+        WZ(r, "P3", 2.4f, 1f, 2.2f);
+        WX(r, "P4", -1.6f, 2f, 2.4f);
+        WZ(r, "P5", 0.4f, 3.6f, 1.8f);
+    }
+
+    static void L6_DoubleBounce(GameObject r)     // 6. Zig-zag path
+    {
+        Base(r, 5); Puck(r, -3f, -5.5f); Hole(r, 3f, 5.3f, 0.95f);
+        WX(r, "Z1", -1f, -3f, 5.2f);
+        WX(r, "Z2", 1f, 0f, 5.2f);
+        WX(r, "Z3", -1f, 3f, 5.2f);
+    }
+
+    static void L7_TheFunnel(GameObject r)        // 7. Precision shot — funnel into a chute
+    {
+        Base(r, 6); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.4f, 0.85f);
+        WA(r, "Mouth_L", -1.9f, -2.6f, 2.6f, 48f);
+        WA(r, "Mouth_R", 1.9f, -2.6f, 2.6f, -48f);
+        WZ(r, "Chute_L", -0.85f, 1.5f, 6f);
+        WZ(r, "Chute_R", 0.85f, 1.5f, 6f);
+    }
+
+    static void L8_SnakePath(GameObject r)        // 8. Rotating obstacle — time the windmill
+    {
+        Base(r, 0); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.3f, 0.95f);
+        WZ(r, "Channel_L", -2.0f, 0.5f, 5f);
+        WZ(r, "Channel_R", 2.0f, 0.5f, 5f);
+        RotWall(r, 0f, 0.5f, 3.0f, 65f);
+        WA(r, "Top_Funnel_L", -1.4f, 4.3f, 2.2f, 35f);
+        WA(r, "Top_Funnel_R", 1.4f, 4.3f, 2.2f, -35f);
+    }
+
+    static void L9_Crossroads(GameObject r)       // 9. Cross-shaped obstacle
+    {
+        Base(r, 1); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.3f, 0.95f);
+        WZ(r, "Cross_S", 0f, -2.4f, 2.4f);
+        WZ(r, "Cross_N", 0f, 2.6f, 2.4f);
+        WX(r, "Cross_W", -2.4f, 0.2f, 2.4f);
+        WX(r, "Cross_E", 2.4f, 0.2f, 2.4f);
+        WA(r, "Pocket_SE", 2.3f, -2.3f, 1.6f, 45f);
+        WA(r, "Pocket_NW", -2.3f, 2.3f, 1.6f, 45f);
+    }
+
+    static void L10_Labyrinth(GameObject r)       // 10. Multiple routes — safe vs boosted
+    {
+        Base(r, 2); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.2f, 0.9f);
+        WZ(r, "Divider", 0f, -0.5f, 6f);
+        WX(r, "Left_Bump", -2.5f, 2.6f, 2f);
+        WX(r, "Right_Gate", 2.3f, 4.2f, 2.2f);
+        Boost(r, 2.3f, -2f, 2.3f, 3.5f, 9f);
+    }
+
+    static void L11_PrecisionRun(GameObject r)    // 11. Tight maze (3 turns)
+    {
+        Base(r, 3); Puck(r, 0f, -5.5f); Hole(r, 3.2f, 5.2f, 0.9f);
+        WX(r, "M1", -0.75f, -3f, 6f);
+        WX(r, "M2", 0.9f, -0.2f, 6f);
+        WX(r, "M3", -0.9f, 2.6f, 6f);
+        WZ(r, "Pocket_R", 3.3f, 3.9f, 2.4f);
+        WZ(r, "Start_Nub", -2.6f, -4.6f, 1.6f);
+    }
+
+    static void L12_SharpAngles(GameObject r)     // 12. Moving blocker — two timed gates
+    {
+        Base(r, 4); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.4f, 0.9f);
+        WZ(r, "Chute_L", -1.6f, -1f, 7f);
+        WZ(r, "Chute_R", 1.6f, -1f, 7f);
+        MovWall(r, 0f, -0.5f, 2.4f, 'X', 3f, 2.2f, 0f);
+        MovWall(r, 0f, 2.5f, 2.4f, 'X', 3f, 2.2f, 1.1f);
+        WA(r, "Top_Funnel_L", -1f, 4.6f, 2f, 35f);
+        WA(r, "Top_Funnel_R", 1f, 4.6f, 2f, -35f);
+    }
+
+    static void L13_GravityTest(GameObject r)     // 13. Combination — moving + wind + funnel
+    {
+        Base(r, 5); Puck(r, 0f, -6f); Hole(r, 0f, 5.8f, 0.9f);
+        WZ(r, "Chute_L", -1.5f, -2.5f, 5f);
+        WZ(r, "Chute_R", 1.5f, -2.5f, 5f);
+        MovWall(r, 0f, 1f, 2.4f, 'X', 3f, 2.4f, 0f);
+        Wind(r, 0f, 3.5f, 3.5f, 2.5f, 1f, 0f, 6f);
+        WA(r, "Exit_L", -1.2f, 4.8f, 2.2f, 35f);
+        WA(r, "Exit_R", 1.2f, 4.8f, 2.2f, -35f);
+    }
+
+    static void L14_FinalMaze(GameObject r)       // 14. Expert precision — deadly slalom
+    {
+        Base(r, 6); Puck(r, 0f, -5.5f); Hole(r, 2.6f, 5.2f, 0.85f);
+        WZ(r, "Corridor_L", -1.5f, -0.5f, 7f);
+        WZ(r, "Corridor_R", 1.5f, -0.5f, 7f);
+        WX(r, "Deadly_1", -0.8f, 0.3f, 1.6f, true);
+        WX(r, "Deadly_2", 0.8f, 2.5f, 1.6f, true);
+        WA(r, "Mouth_L", -2.4f, -4.2f, 2.2f, 35f);
+        WA(r, "Mouth_R", 2.4f, -4.2f, 2.2f, -35f);
+        WX(r, "Exit_Lip", -0.5f, 4.4f, 2f);
+    }
+
+    static void L15_MasterBuca(GameObject r)      // 15. Final boss — all mechanics (fair)
+    {
+        Base(r, 6); Puck(r, 2.8f, -5.6f); Hole(r, -3f, 5f, 0.8f);
+        WX(r, "Deadly_Guard", -1.4f, 4f, 2.2f, true);
+        WZ(r, "Hole_Lip", -1.4f, 5f, 1.6f);
+        WX(r, "Lower_Channel", 0f, -3.2f, 2f);
+        Wind(r, 0.5f, 1.5f, 8f, 7f, -1f, 0f, 6f);
+        Pad(r, 2.6f, -2.2f, -3f, 4.5f, 15f);
+        RotWall(r, -0.6f, 0.6f, 2.6f, 70f);
+        MovWall(r, -1.3f, 2.8f, 2.4f, 'X', 3.2f, 2.2f, 0f);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // EXPANSION — 15 harder levels (16–30). Smaller holes, combined
+    // mechanics, tighter timing. Still fair: a clear path always exists.
+    // ═══════════════════════════════════════════════════════════
+
+    static void L16_TwinGaps(GameObject r)        // 16. narrowing iris funnel + a moving wall
+    {
+        Base(r, 0); Puck(r, 0f, -5.6f); Hole(r, 0f, 5.4f, 0.85f);
+        WA(r, "Iris_L1", -2.9f, -3f, 2.6f, 58f);
+        WA(r, "Iris_R1", 2.9f, -3f, 2.6f, -58f);
+        WA(r, "Iris_L2", -1.7f, 0.3f, 2.2f, 70f);
+        WA(r, "Iris_R2", 1.7f, 0.3f, 2.2f, -70f);
+        MovWall(r, 0f, 3.6f, 2f, 'X', 2.2f, 2.4f, 0f);
+    }
+
+    static void L17_BumperAlley(GameObject r)     // 17. slalom of angled bumpers
+    {
+        Base(r, 1); Puck(r, 0f, -5.6f); Hole(r, 0f, 5.4f, 0.85f);
+        WA(r, "Bump1", -1.8f, -3f, 2.6f, 40f);
+        WA(r, "Bump2", 1.8f, -0.8f, 2.6f, -40f);
+        WA(r, "Bump3", -1.8f, 1.4f, 2.6f, 40f);
+        WA(r, "Bump4", 1.8f, 3.6f, 2.6f, -40f);
+    }
+
+    static void L18_SpinningGauntlet(GameObject r) // 18. two counter-spinning windmills
+    {
+        Base(r, 2); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.4f, 0.8f);
+        WZ(r, "Ch_L", -1.8f, 0.5f, 5f);
+        WZ(r, "Ch_R", 1.8f, 0.5f, 5f);
+        RotWall(r, 0f, -1.5f, 2.6f, 75f);
+        RotWall(r, 0f, 2.5f, 2.6f, -75f);
+    }
+
+    static void L19_WindTunnel(GameObject r)      // 19. strong wind toward an offset hole
+    {
+        Base(r, 3); Puck(r, 0f, -5.5f); Hole(r, -2.5f, 5.2f, 0.8f);
+        WZ(r, "Corr_L", -1.5f, -1f, 6f);
+        WZ(r, "Corr_R", 1.5f, -1f, 6f);
+        Wind(r, 0f, 2f, 3f, 3f, -1f, 0.3f, 7f);
+        WX(r, "Exit_Lip", 0.6f, 4.4f, 2f);
+    }
+
+    static void L20_TeleportMaze(GameObject r)    // 20. split corridors linked by a teleporter
+    {
+        Base(r, 4); Puck(r, -2.5f, -5.6f); Hole(r, 2.5f, 5.3f, 0.8f);
+        WZ(r, "Divider", 0f, -0.5f, 8f);
+        WX(r, "Cap_Top", 0f, 5f, 4f);
+        WX(r, "Cap_Bot", 0f, -5f, 4f);
+        Tele(r, -2.5f, 0f, 2.5f, 0f);
+    }
+
+    static void L21_BounceChain(GameObject r)     // 21. chain of three bounce pads
+    {
+        Base(r, 5); Puck(r, 0f, -5.6f); Hole(r, 0f, 5.3f, 0.8f);
+        WX(r, "Block_L", -1.8f, -1f, 3.4f);
+        WX(r, "Block_R", 1.8f, 2f, 3.4f);
+        Pad(r, -2.8f, -3f, 2.5f, 0f, 14f);
+        Pad(r, 2.8f, 0f, -2.5f, 3f, 14f);
+        Pad(r, -2.5f, 3f, 0f, 5.3f, 13f);
+    }
+
+    static void L22_MovingCross(GameObject r)     // 22. twin moving gates with deadly side rails
+    {
+        Base(r, 6); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.3f, 0.8f);
+        MovWall(r, -0.7f, -0.5f, 2.6f, 'X', 2.6f, 2f, 0f);
+        MovWall(r, 0.7f, 2.5f, 2.6f, 'X', 2.6f, 2f, 1f);
+        WZ(r, "D_L", -2.4f, 1f, 4f, true);
+        WZ(r, "D_R", 2.4f, 1f, 4f, true);
+    }
+
+    static void L23_GravityBend(GameObject r)     // 23. gravity well bends past a deadly wall
+    {
+        Base(r, 0); Puck(r, 0f, -5.5f); Hole(r, 2.8f, 5.2f, 0.8f);
+        WZ(r, "Wall_L", -1.5f, 0f, 6f);
+        WX(r, "Deadly", -0.5f, 3f, 2f, true);
+        WA(r, "Exit", 1.5f, 4.5f, 2.5f, -35f);
+        Grav(r, 1.5f, 1f, 3f, 13f);
+    }
+
+    static void L24_DeadlyCorridor(GameObject r)  // 24. weave around a deadly diamond
+    {
+        Base(r, 1); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.4f, 0.78f);
+        WA(r, "Dia_BL", -1.2f, -1.2f, 2.2f, 45f, true);
+        WA(r, "Dia_BR", 1.2f, -1.2f, 2.2f, -45f, true);
+        WA(r, "Dia_TL", -1.2f, 1.8f, 2.2f, -45f, true);
+        WA(r, "Dia_TR", 1.2f, 1.8f, 2.2f, 45f, true);
+        WZ(r, "Lane_L", -2.7f, 0.3f, 4f);
+        WZ(r, "Lane_R", 2.7f, 0.3f, 4f);
+    }
+
+    static void L25_SpeedRun(GameObject r)        // 25. boost through obstacles at speed
+    {
+        Base(r, 2); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.6f, 0.78f);
+        Boost(r, 0f, -3f, 0f, 2f, 11f);
+        WX(r, "Block_L", -1.5f, -0.5f, 3f);
+        WX(r, "Block_R", 1.8f, 2f, 3.2f);
+        WA(r, "Top_L", -1f, 4.6f, 2f, 35f);
+        WA(r, "Top_R", 1f, 4.6f, 2f, -35f);
+    }
+
+    static void L26_Pinball(GameObject r)         // 26. flippers, twin spinners, launch pad
+    {
+        Base(r, 3); Puck(r, 0f, -5.6f); Hole(r, 0f, 5.4f, 0.78f);
+        WA(r, "Flip_L", -2.6f, -3.6f, 2.6f, 55f);
+        WA(r, "Flip_R", 2.6f, -3.6f, 2.6f, -55f);
+        Pad(r, 0f, -2f, 0f, 3.5f, 12f);
+        RotWall(r, -1.9f, 1f, 1.8f, 90f);
+        RotWall(r, 1.9f, 1f, 1.8f, -90f);
+        WA(r, "Pocket_L", -1.4f, 4.3f, 2f, 40f);
+        WA(r, "Pocket_R", 1.4f, 4.3f, 2f, -40f);
+    }
+
+    static void L27_TwinWindmills(GameObject r)   // 27. one giant sweeping windmill arena
+    {
+        Base(r, 4); Puck(r, 0f, -5.6f); Hole(r, 0f, 5.4f, 0.75f);
+        RotWall(r, 0f, 0f, 4f, 52f);
+        WX(r, "Guard_L", -2.9f, 2.6f, 2.4f, true);
+        WX(r, "Guard_R", 2.9f, 2.6f, 2.4f, true);
+        WZ(r, "Hole_Lip_L", -1f, 5f, 1.6f);
+        WZ(r, "Hole_Lip_R", 1f, 5f, 1.6f);
+    }
+
+    static void L28_TheVault(GameObject r)        // 28. two-room vault — doors + a deadly mover between
+    {
+        Base(r, 5); Puck(r, 0f, -5.6f); Hole(r, 0f, 5.3f, 0.75f);
+        WX(r, "Lower_Divide", -1.3f, -1.5f, 6f);  // doorway on the right
+        WX(r, "Upper_Divide", 1.3f, 2f, 6f);       // doorway on the left
+        MovWall(r, 0f, 0.3f, 2.2f, 'X', 2.5f, 2.2f, 0f, true);
+        WA(r, "Hole_Funnel_L", -1.2f, 4.4f, 2f, 35f);
+        WA(r, "Hole_Funnel_R", 1.2f, 4.4f, 2f, -35f);
+    }
+
+    static void L29_HazardGauntlet(GameObject r)  // 29. open gauntlet — sweeping wall + crosswind
+    {
+        Base(r, 6); Puck(r, -2.8f, -5.6f); Hole(r, 2.8f, 5.4f, 0.72f);
+        MovWall(r, 0f, 1f, 3.6f, 'X', 3f, 2.6f, 0f);
+        Wind(r, 0f, 3.8f, 8f, 2f, 1f, 0f, 7f);
+        WA(r, "D_Bar", 0f, -1.8f, 3f, 35f, true);
+        WZ(r, "Edge_L", -4f, 1f, 3f);
+    }
+
+    static void L30_GrandFinale(GameObject r)     // 30. the finale — spinners, gravity, teleport, hazards
+    {
+        Base(r, 6); Puck(r, 0f, -5.8f); Hole(r, 0f, 5.6f, 0.7f);
+        RotWall(r, -1.6f, -1f, 2.2f, 70f);
+        RotWall(r, 1.6f, 1.5f, 2.2f, -70f);
+        Grav(r, 0f, 3.8f, 2.6f, 11f);
+        WX(r, "D_L", -1.3f, 4.6f, 1.8f, true);
+        WX(r, "D_R", 1.3f, 4.6f, 1.8f, true);
+        Tele(r, -3.4f, -3f, 3.2f, 0.5f);
+        Wind(r, 0f, 1.5f, 7f, 2f, 1f, 0f, 5f);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // Primitive builders — the hierarchy contract LevelManager expects
+    // ═══════════════════════════════════════════════════════════
     static void BuildFloor(GameObject root, Material floorMat)
     {
-        float w = (FieldW * 2) + 1.4f;
-        float l = (FieldL * 2) + 1.4f;
+        float w = (FieldW * 2) + 1.4f, l = (FieldL * 2) + 1.4f;
 
         var bevel = GameObject.CreatePrimitive(PrimitiveType.Cube);
         bevel.name = "Table_Bevel";
@@ -352,14 +492,14 @@ public static class LevelPrefabGenerator
     static void BuildBoundary(GameObject root)
     {
         float w = FieldW, l = FieldL;
-        AddTube(root, "Bound_Top", new Vector3(0f, TubeY,  l), Quaternion.Euler(0,0,90), w * 2, _railMat, false);
-        AddTube(root, "Bound_Bot", new Vector3(0f, TubeY, -l), Quaternion.Euler(0,0,90), w * 2, _railMat, false);
-        AddTube(root, "Bound_L",   new Vector3(-w, TubeY, 0f), Quaternion.Euler(90,0,0), l * 2, _railMat, false);
-        AddTube(root, "Bound_R",   new Vector3( w, TubeY, 0f), Quaternion.Euler(90,0,0), l * 2, _railMat, false);
-        AddCorner(root, "Corner_TL", new Vector3(-w, TubeY,  l));
-        AddCorner(root, "Corner_TR", new Vector3( w, TubeY,  l));
+        AddTube(root, "Bound_Top", new Vector3(0f, TubeY, l), Quaternion.Euler(0, 0, 90), w * 2, _railMat, false);
+        AddTube(root, "Bound_Bot", new Vector3(0f, TubeY, -l), Quaternion.Euler(0, 0, 90), w * 2, _railMat, false);
+        AddTube(root, "Bound_L", new Vector3(-w, TubeY, 0f), Quaternion.Euler(90, 0, 0), l * 2, _railMat, false);
+        AddTube(root, "Bound_R", new Vector3(w, TubeY, 0f), Quaternion.Euler(90, 0, 0), l * 2, _railMat, false);
+        AddCorner(root, "Corner_TL", new Vector3(-w, TubeY, l));
+        AddCorner(root, "Corner_TR", new Vector3(w, TubeY, l));
         AddCorner(root, "Corner_BL", new Vector3(-w, TubeY, -l));
-        AddCorner(root, "Corner_BR", new Vector3( w, TubeY, -l));
+        AddCorner(root, "Corner_BR", new Vector3(w, TubeY, -l));
     }
 
     static void BuildPuckStart(GameObject root, Vector3 pos)
@@ -386,7 +526,6 @@ public static class LevelPrefabGenerator
         float innerScale = ringScale * 0.74f;
         hole.transform.localScale = new Vector3(innerScale, 0.05f, innerScale);
         if (_holeMat != null) hole.GetComponent<MeshRenderer>().sharedMaterial = _holeMat;
-
         Object.DestroyImmediate(hole.GetComponent<Collider>());
         var col = hole.AddComponent<SphereCollider>();
         col.isTrigger = true;
@@ -406,11 +545,7 @@ public static class LevelPrefabGenerator
         if (mat != null) tube.GetComponent<MeshRenderer>().sharedMaterial = mat;
         tube.GetComponent<Collider>().isTrigger = deadly;
         if (deadly) tube.AddComponent<DeadlyTrigger>();
-        else
-        {
-            var rl = tube.AddComponent<RailLight>();
-            rl.targetRenderer = tube.GetComponent<Renderer>();
-        }
+        else { var rl = tube.AddComponent<RailLight>(); rl.targetRenderer = tube.GetComponent<Renderer>(); }
         return tube;
     }
 
@@ -431,15 +566,12 @@ public static class LevelPrefabGenerator
         pad.name = "BouncePad";
         pad.transform.SetParent(root.transform);
         pad.transform.localPosition = pos;
-        // Rotate so transform.forward points along `forward`
         if (forward.sqrMagnitude > 0.001f)
             pad.transform.localRotation = Quaternion.LookRotation(new Vector3(forward.x, 0, forward.z), Vector3.up);
         pad.transform.localScale = new Vector3(1.2f, 0.08f, 0.4f);
         if (_padMat != null) pad.GetComponent<MeshRenderer>().sharedMaterial = _padMat;
-        var col = pad.GetComponent<Collider>();
-        col.isTrigger = true;
-        var bp = pad.AddComponent<BouncePad>();
-        bp.launchSpeed = launchSpeed;
+        pad.GetComponent<Collider>().isTrigger = true;
+        pad.AddComponent<BouncePad>().launchSpeed = launchSpeed;
         return pad;
     }
 
@@ -453,10 +585,8 @@ public static class LevelPrefabGenerator
             ring.transform.localRotation = Quaternion.LookRotation(new Vector3(forward.x, 0, forward.z), Vector3.up);
         ring.transform.localScale = new Vector3(0.3f, 0.4f, 1.4f);
         if (_ringMat != null) ring.GetComponent<MeshRenderer>().sharedMaterial = _ringMat;
-        var col = ring.GetComponent<Collider>();
-        col.isTrigger = true;
-        var sb = ring.AddComponent<SpeedBoost>();
-        sb.boostAmount = boostAmount;
+        ring.GetComponent<Collider>().isTrigger = true;
+        ring.AddComponent<SpeedBoost>().boostAmount = boostAmount;
         return ring;
     }
 
@@ -471,20 +601,11 @@ public static class LevelPrefabGenerator
         tube.transform.localScale = new Vector3(TubeRadius * 2, lengthAlongLocalY * 0.5f, TubeRadius * 2);
         if (_railMat != null) tube.GetComponent<MeshRenderer>().sharedMaterial = _railMat;
         tube.GetComponent<Collider>().isTrigger = false;
-
         var rb = tube.AddComponent<Rigidbody>();
-        rb.useGravity = false;
-        rb.isKinematic = true;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
-
+        rb.useGravity = false; rb.isKinematic = true; rb.interpolation = RigidbodyInterpolation.Interpolate;
         var mover = tube.AddComponent<MovingWall>();
-        mover.axis = axis;
-        mover.distance = distance;
-        mover.cycleSeconds = cycleSeconds;
-        mover.phase = phase;
-
-        var rl = tube.AddComponent<RailLight>();
-        rl.targetRenderer = tube.GetComponent<Renderer>();
+        mover.axis = axis; mover.distance = distance; mover.cycleSeconds = cycleSeconds; mover.phase = phase;
+        var rl = tube.AddComponent<RailLight>(); rl.targetRenderer = tube.GetComponent<Renderer>();
         return tube;
     }
 
@@ -498,22 +619,14 @@ public static class LevelPrefabGenerator
         tube.transform.localScale = new Vector3(TubeRadius * 2, length * 0.5f, TubeRadius * 2);
         if (_railMat != null) tube.GetComponent<MeshRenderer>().sharedMaterial = _railMat;
         tube.GetComponent<Collider>().isTrigger = false;
-
         var rb = tube.AddComponent<Rigidbody>();
-        rb.useGravity = false;
-        rb.isKinematic = true;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
-
-        var rot = tube.AddComponent<RotatingWall>();
-        rot.speedDegPerSec = rotationSpeed;
-
-        var rl = tube.AddComponent<RailLight>();
-        rl.targetRenderer = tube.GetComponent<Renderer>();
+        rb.useGravity = false; rb.isKinematic = true; rb.interpolation = RigidbodyInterpolation.Interpolate;
+        tube.AddComponent<RotatingWall>().speedDegPerSec = rotationSpeed;
+        var rl = tube.AddComponent<RailLight>(); rl.targetRenderer = tube.GetComponent<Renderer>();
         return tube;
     }
 
-    static GameObject BuildWindZone(GameObject root, Vector3 pos, Vector3 size,
-                                    Vector3 forward, float forceMagnitude)
+    static GameObject BuildWindZone(GameObject root, Vector3 pos, Vector3 size, Vector3 forward, float forceMagnitude)
     {
         var zone = GameObject.CreatePrimitive(PrimitiveType.Cube);
         zone.name = "WindZone";
@@ -522,15 +635,10 @@ public static class LevelPrefabGenerator
         if (forward.sqrMagnitude > 0.001f)
             zone.transform.localRotation = Quaternion.LookRotation(forward, Vector3.up);
         zone.transform.localScale = size;
-        // Make invisible — wind zones are felt, not seen as solid
-        var mr = zone.GetComponent<MeshRenderer>();
-        if (mr != null) Object.DestroyImmediate(mr);
-        var mf = zone.GetComponent<MeshFilter>();
-        if (mf != null) Object.DestroyImmediate(mf);
-        var col = zone.GetComponent<Collider>();
-        col.isTrigger = true;
-        var wz = zone.AddComponent<BucaWindZone>();
-        wz.forceMagnitude = forceMagnitude;
+        Object.DestroyImmediate(zone.GetComponent<MeshRenderer>());
+        Object.DestroyImmediate(zone.GetComponent<MeshFilter>());
+        zone.GetComponent<Collider>().isTrigger = true;
+        zone.AddComponent<BucaWindZone>().forceMagnitude = forceMagnitude;
         return zone;
     }
 
@@ -544,8 +652,7 @@ public static class LevelPrefabGenerator
             disc.transform.localRotation = Quaternion.LookRotation(facing, Vector3.up);
         disc.transform.localScale = new Vector3(1.0f, 0.05f, 1.0f);
         if (_ringMat != null) disc.GetComponent<MeshRenderer>().sharedMaterial = _ringMat;
-        var col = disc.GetComponent<Collider>();
-        col.isTrigger = true;
+        disc.GetComponent<Collider>().isTrigger = true;
         disc.AddComponent<Teleporter>();
         return disc;
     }
@@ -558,30 +665,9 @@ public static class LevelPrefabGenerator
         marker.transform.localPosition = pos;
         marker.transform.localScale = Vector3.one * 0.3f;
         if (_holeMat != null) marker.GetComponent<MeshRenderer>().sharedMaterial = _holeMat;
-        // No collider — pure point attractor
         Object.DestroyImmediate(marker.GetComponent<Collider>());
         var gw = marker.AddComponent<GravityWell>();
-        gw.range = range;
-        gw.strength = strength;
+        gw.range = range; gw.strength = strength;
         return marker;
-    }
-
-    static void BuildDisappearingGate(GameObject root, string name, float zPos, float phase,
-                                      float onDur, float offDur)
-    {
-        var gate = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        gate.name = name;
-        gate.transform.SetParent(root.transform);
-        gate.transform.localPosition = new Vector3(0f, TubeY, zPos);
-        gate.transform.localRotation = Quaternion.Euler(0, 0, 90);
-        gate.transform.localScale = new Vector3(TubeRadius * 2, 1.5f, TubeRadius * 2);
-        if (_railMat != null) gate.GetComponent<MeshRenderer>().sharedMaterial = _railMat;
-        gate.GetComponent<Collider>().isTrigger = false;
-        var dw = gate.AddComponent<DisappearingWall>();
-        dw.onDuration = onDur;
-        dw.offDuration = offDur;
-        dw.phase = phase;
-        var rl = gate.AddComponent<RailLight>();
-        rl.targetRenderer = gate.GetComponent<Renderer>();
     }
 }

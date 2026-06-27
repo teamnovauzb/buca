@@ -45,6 +45,18 @@ public class LevelManager : MonoBehaviour
     [Header("Leaderboard panel (fallback for standalone — without LuxoddGameBridge)")]
     [Tooltip("If assigned, the leaderboard appears on death/time-up even when no LuxoddGameBridge is present. Auto-found at Start.")]
     public LeaderboardPanel leaderboardPanel;
+
+    [Header("Lives system")]
+    [Tooltip("Lives each level starts with. A missed shot (puck comes to rest without sinking) costs one.")]
+    public int maxLives = 3;
+    [Tooltip("HUD text showing remaining lives. Wired by 'RealBuca ▸ Add Lives System'.")]
+    public TMP_Text livesDisplay;
+    [Tooltip("Heart icons (preferred over the text). Wired by 'RealBuca ▸ Add Lives System'.")]
+    public UnityEngine.UI.Image[] lifeIcons;
+    public Color lifeFullColor = new Color(1f, 0.19f, 0.24f, 1f);   // vivid red heart
+    public Color lifeEmptyColor = new Color(1f, 0.19f, 0.24f, 0.16f); // faint red (life lost)
+    [Tooltip("Shown when lives reach 0. Wired by 'RealBuca ▸ Add Lives System'.")]
+    public LevelFailedPanel levelFailedPanel;
     [Tooltip("Show the leaderboard panel before respawning on deadly-wall death.")]
     public bool showLeaderboardOnDeath = true;
     [Tooltip("Show the leaderboard panel before restarting on time-up.")]
@@ -123,6 +135,9 @@ public class LevelManager : MonoBehaviour
     Vector3 _camRestPos;
     Quaternion _camRestRot;
     float _shakeAmount, _shakeTime;
+    // Cinematic victory camera push-in (see CompleteSequence / VictoryCameraPush).
+    float _winCamBlend;          // 0 = rest, 1 = fully pushed toward the sunk hole
+    Vector3 _winCamPushOffset;   // additive world offset applied at blend = 1
     Vector3 _followOffset, _followVel;
 
     // Coroutine handles so re-triggering doesn't double-animate
@@ -144,6 +159,7 @@ public class LevelManager : MonoBehaviour
     // Live score display
     int _displayedScore;
     float _scoreDisplayVel;
+    int _lastShownScore = int.MinValue;   // gates the per-frame score-string rebuild
 
     // Accumulated bonus from pickups (added to per-level score)
     int _bonusScoreThisLevel;
@@ -151,6 +167,11 @@ public class LevelManager : MonoBehaviour
     // Rail tracking for star rating
     int _totalRailsInLevel;
     int _litRailCount;
+    int _comboChain;        // fresh walls lit during the current shot
+    int _comboShownMult;    // highest multiplier already announced this shot
+    int _lives;
+    bool _shotInProgress;   // a launched shot is currently in flight
+    bool _levelFailed;
 
     // Campaign totals for the game-complete screen + live HUD score
     int _campaignTotalStrokes;
@@ -255,12 +276,121 @@ public class LevelManager : MonoBehaviour
         if (_puckWasStopped && !stopped)
         {
             _shotCount++;
+            _shotInProgress = true;   // a launched shot is now in flight
+            _comboChain = 0;          // a fresh combo chain starts each shot
+            _comboShownMult = 0;
             if (shotCounter != null)
                 shotCounter.text = $"STROKES  {_shotCount}";
             // First-shot tutorial dismissal
             if (tutorial != null) tutorial.MarkSeen();
         }
+        else if (!_puckWasStopped && stopped && _shotInProgress)
+        {
+            // The puck came to rest WITHOUT sinking — a sink sets _isTransitioning,
+            // which exits this method early, so reaching here means a MISSED shot.
+            _shotInProgress = false;
+            OnMissedShot();
+        }
         _puckWasStopped = stopped;
+    }
+
+    // ── Lives system ───────────────────────────────────────────
+    // Each level starts with maxLives. A missed shot (above) costs one life; at 0
+    // lives the level fails and the Level-Failed panel is shown (Retry / Exit).
+    void OnMissedShot()
+    {
+        if (_levelFailed || _isTransitioning) return;
+        _lives = Mathf.Max(0, _lives - 1);
+        UpdateLivesDisplay();
+
+        ShakeCamera(0.12f, 0.15f);
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayWallHit(6f); // soft "miss" thud
+
+        if (_lives <= 0) FailLevel();
+        else FlashScreen(new Color(1f, 0.35f, 0.40f), 0.22f, 0.28f);              // brief red pulse
+    }
+
+    void FailLevel()
+    {
+        if (_levelFailed) return;
+        _levelFailed = true;
+        StartCoroutine(FailSequence());
+    }
+
+    System.Collections.IEnumerator FailSequence()
+    {
+        _isTransitioning = true;
+
+        if (puckRigidbody != null)
+        {
+            puckRigidbody.linearVelocity = Vector3.zero;
+            puckRigidbody.angularVelocity = Vector3.zero;
+            puckRigidbody.isKinematic = true;
+        }
+
+        FlashScreen(new Color(1f, 0.20f, 0.25f), 0.6f, 0.5f);
+        ShakeCamera(0.25f, 0.35f);
+        if (deathBurst != null && puck != null)
+        {
+            deathBurst.transform.position = puck.transform.position;
+            deathBurst.Clear(true);
+            deathBurst.Play(true);
+        }
+
+        yield return new WaitForSecondsRealtime(0.55f);
+
+        // Out of hearts → Luxodd flow: show the LEADERBOARD, then (after it) the
+        // Continue / End popup so the player can pay credits to keep going.
+        //   • Continue → restore all 3 hearts and re-attempt this level.
+        //   • End      → bridge finalizes the session + returns to the system.
+        // No bridge (pure standalone) → fall back to the local fail panel.
+        if (luxoddBridge != null)
+        {
+            bool waiting = true;
+            luxoddBridge.OnPuckDeathWithLeaderboard(
+                onContinue: () => { waiting = false; RetryLevel(); },   // paid → fresh hearts, same level
+                onEnd:      () => { waiting = false; _isTransitioning = false; });
+            float w = 0f; const float MaxWait = 90f;
+            while (waiting && w < MaxWait) { w += Time.unscaledDeltaTime; yield return null; }
+            if (waiting)
+            {
+                Debug.LogWarning("[LevelManager] Hearts-out Luxodd choice timed out — reloading level.");
+                _isTransitioning = false;
+                LoadLevel(_currentIndex);
+            }
+            yield break;
+        }
+
+        if (levelFailedPanel != null) levelFailedPanel.Show(RetryLevel);
+        else LoadLevel(_currentIndex);   // fallback: just reload if no panel wired
+    }
+
+    /// <summary>Called by the Level-Failed panel's Retry button.</summary>
+    public void RetryLevel()
+    {
+        _levelFailed = false;
+        _isTransitioning = false;
+        LoadLevel(_currentIndex);
+    }
+
+    void UpdateLivesDisplay()
+    {
+        // Preferred: heart icons (red = remaining, faint = lost).
+        if (lifeIcons != null && lifeIcons.Length > 0)
+        {
+            for (int i = 0; i < lifeIcons.Length; i++)
+                if (lifeIcons[i] != null)
+                    lifeIcons[i].color = (i < _lives) ? lifeFullColor : lifeEmptyColor;
+            return;
+        }
+        // Fallback: text hearts (if no icons were wired).
+        if (livesDisplay != null)
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < maxLives; i++)
+                sb.Append(i < _lives ? "<color=#FF2E5B>♥</color> " : "<color=#FFFFFF30>♥</color> ");
+            livesDisplay.text = sb.ToString();
+        }
     }
 
     /// <summary>Counts down the level timer and triggers time-up on expiry.</summary>
@@ -427,7 +557,12 @@ public class LevelManager : MonoBehaviour
         float smooth = Mathf.SmoothDamp(_displayedScore, target, ref _scoreDisplayVel, 0.25f);
         _displayedScore = Mathf.RoundToInt(smooth);
 
-        scoreDisplay.text = $"SCORE  {_displayedScore}";
+        // Only rebuild the string when the number actually changes (not 60×/sec).
+        if (_displayedScore != _lastShownScore)
+        {
+            _lastShownScore = _displayedScore;
+            scoreDisplay.text = $"SCORE  {_displayedScore}";
+        }
     }
 
     /// <summary>
@@ -501,7 +636,8 @@ public class LevelManager : MonoBehaviour
                 shake = new Vector3(x, y, 0f);
             }
 
-            _mainCam.transform.position = _camRestPos + _followOffset + shake;
+            _mainCam.transform.position = _camRestPos + _followOffset + shake
+                + _winCamBlend * _winCamPushOffset;
             _mainCam.transform.rotation = _camRestRot;
         }
 
@@ -552,6 +688,10 @@ public class LevelManager : MonoBehaviour
         PositionPuckAtStart();
         _shotCount = 0;
         _puckWasStopped = true;
+        _lives = maxLives;
+        _shotInProgress = false;
+        _levelFailed = false;
+        UpdateLivesDisplay();
         if (shotCounter != null) shotCounter.text = "STROKES  0";
         // Don't reset displayed score to 0 — keep campaign-total continuity.
         // TickLiveScore immediately recomputes with the new level's data.
@@ -564,6 +704,8 @@ public class LevelManager : MonoBehaviour
         var rails = _currentInstance.GetComponentsInChildren<RailLight>(true);
         _totalRailsInLevel = rails.Length;
         _litRailCount = 0;
+        _comboChain = 0;
+        _comboShownMult = 0;
         for (int i = 0; i < rails.Length; i++) rails[i].Reset();
 
         // Hide star UI until the win moment
@@ -620,6 +762,27 @@ public class LevelManager : MonoBehaviour
     {
         if (_isTransitioning) return;
         StartCoroutine(CompleteSequence());
+    }
+
+    // Cinematic victory push-in: eases the camera toward the sunk hole and back.
+    // Purely additive on the rig pose (LateUpdate adds _winCamBlend * _winCamPushOffset),
+    // so the camera always returns exactly to its rest pose afterward.
+    IEnumerator VictoryCameraPush(Vector3 focus, float duration)
+    {
+        Vector3 toFocus = new Vector3(focus.x - _camRestPos.x, 0f, focus.z - _camRestPos.z);
+        _winCamPushOffset = toFocus * 0.30f + new Vector3(0f, -1.3f, 1.6f);
+
+        float inDur = duration * 0.45f;
+        float holdDur = duration * 0.15f;
+        float outDur = Mathf.Max(0.01f, duration - inDur - holdDur);
+
+        float t = 0f;
+        while (t < inDur)  { t += Time.deltaTime; _winCamBlend = Mathf.SmoothStep(0f, 1f, t / inDur);  yield return null; }
+        _winCamBlend = 1f;
+        yield return new WaitForSeconds(holdDur);
+        t = 0f;
+        while (t < outDur) { t += Time.deltaTime; _winCamBlend = Mathf.SmoothStep(1f, 0f, t / outDur); yield return null; }
+        _winCamBlend = 0f;
     }
 
     IEnumerator CompleteSequence()
@@ -700,6 +863,15 @@ public class LevelManager : MonoBehaviour
         int prevBestScore = PlayerPrefs.GetInt(PrefLevelScore + _currentIndex, 0);
         if (score.total > prevBestScore)
             PlayerPrefs.SetInt(PrefLevelScore + _currentIndex, score.total);
+
+        // ── Progression: completing this level UNLOCKS the next one. ──
+        // BucaHighestLevel = highest playable level index. Levels above it stay
+        // locked in the picker. Monotonic — only ever increases.
+        const string highestKey = "BucaHighestLevel";
+        int newUnlock = Mathf.Min(_currentIndex + 1, levelPrefabs.Length - 1);
+        if (newUnlock > PlayerPrefs.GetInt(highestKey, 0))
+            PlayerPrefs.SetInt(highestKey, newUnlock);
+
         PlayerPrefs.Save();
 
         // Luxodd: report level completion with score to server.
@@ -721,24 +893,42 @@ public class LevelManager : MonoBehaviour
         _campaignTotalStars   += score.stars;
         _campaignTotalScore   += score.total;
 
-        // Shrink puck into hole
-        float shrinkDur = 0.35f;
+        // ── Cinematic sink: spiral the puck down the hole throat (decaying
+        //    radius + downward dip + spin) instead of a flat shrink-to-center,
+        //    with a camera push-in toward the hole. This is the payoff every
+        //    shot builds to — the single biggest "premium" moment. ──
+        float shrinkDur = 0.5f;
         float t = 0f;
         Vector3 baseScale = Vector3.one * puckSize;
         Vector3 startScale = puck != null ? puck.transform.localScale : baseScale;
         Vector3 startPos = puck != null ? puck.transform.position : Vector3.zero;
-        Vector3 targetPos = new Vector3(burstPos.x, startPos.y, burstPos.z);
-        if (puckTrail != null) puckTrail.emitting = false;
+        Vector3 holePos = new Vector3(burstPos.x, startPos.y, burstPos.z);
+
+        Vector3 fromHole = startPos - holePos; fromHole.y = 0f;
+        float startRadius = Mathf.Max(fromHole.magnitude, 0.35f); // visible orbit even from dead-center
+        float startAngle = Mathf.Atan2(fromHole.z, fromHole.x);
+        const float swirlTurns = 2.2f;                            // loops on the way down
+        if (puckTrail != null) puckTrail.emitting = true;         // trail draws the spiral arc
+
+        // Camera eases toward the hole during the swirl, then back to rest.
+        StartCoroutine(VictoryCameraPush(holePos, shrinkDur + 0.15f));
 
         while (t < shrinkDur && puck != null)
         {
             t += Time.deltaTime;
-            float k = Mathf.SmoothStep(0f, 1f, t / shrinkDur);
-            puck.transform.localScale = Vector3.Lerp(startScale, Vector3.zero, k);
-            puck.transform.position = Vector3.Lerp(startPos, targetPos, k);
+            float k = Mathf.Clamp01(t / shrinkDur);
+            float ease = k * k;                                   // accelerate as it falls in
+            float radius = Mathf.Lerp(startRadius, 0f, ease);
+            float angle = startAngle + swirlTurns * Mathf.PI * 2f * k;
+            float dip = -0.42f * ease;                            // sinks below the lip
+            puck.transform.position = holePos +
+                new Vector3(Mathf.Cos(angle) * radius, dip, Mathf.Sin(angle) * radius);
+            puck.transform.localScale = Vector3.Lerp(startScale, Vector3.zero, ease);
+            puck.transform.Rotate(0f, 760f * Time.deltaTime, 0f, Space.Self); // fast spin
             yield return null;
         }
         if (puck != null) puck.transform.localScale = Vector3.zero;
+        if (puckTrail != null) puckTrail.emitting = false;
         if (puckShadow != null) puckShadow.localScale = Vector3.zero;
 
         yield return new WaitForSeconds(Mathf.Max(0f, transitionDelay - shrinkDur));
@@ -1135,7 +1325,40 @@ public class LevelManager : MonoBehaviour
         if (col == null) return;
         var rail = col.GetComponentInParent<RailLight>();
         if (rail == null) return;
-        if (rail.LightUp()) _litRailCount++;
+        if (rail.LightUp())
+        {
+            _litRailCount++;
+            RegisterCombo(col.transform.position);
+        }
+    }
+
+    // ── Combo & flair scoring ──────────────────────────────────
+    // Each fresh wall the puck lights in a single shot extends a chain that raises
+    // a ×1→×5 multiplier and awards escalating BONUS points — added on TOP of the
+    // normal score via AddBonusScore, so base scoring/rules are unchanged. The chain
+    // resets each new shot (and on level load).
+    const int ComboBasePoints = 50;
+    void RegisterCombo(Vector3 worldPos)
+    {
+        _comboChain++;
+        int mult = Mathf.Min(_comboChain, 5);
+        AddBonusScore(ComboBasePoints * mult, worldPos);     // additive bonus + spark
+        if (mult >= 2 && mult > _comboShownMult && comboText != null)
+        {
+            _comboShownMult = mult;
+            comboText.Show($"COMBO  ×{mult}!", ComboColor(mult));
+        }
+    }
+
+    static Color ComboColor(int mult)
+    {
+        switch (mult)
+        {
+            case 5:  return new Color(1f, 0.30f, 0.50f);   // hot pink
+            case 4:  return new Color(1f, 0.55f, 0.20f);   // orange
+            case 3:  return new Color(1f, 0.85f, 0.30f);   // gold
+            default: return new Color(0.50f, 0.95f, 1f);   // cyan
+        }
     }
 
     /// <summary>
@@ -1146,33 +1369,11 @@ public class LevelManager : MonoBehaviour
     /// </summary>
     System.Collections.IEnumerator ShowStandaloneLeaderboard()
     {
-        if (leaderboardPanel == null) yield break;
-
-        var fake = new LeaderboardPanel.LeaderboardData[]
-        {
-            new LeaderboardPanel.LeaderboardData { rank = 1,  playerName = "ARCADE_KING", score = 28400 },
-            new LeaderboardPanel.LeaderboardData { rank = 2,  playerName = "P1_HERO",     score = 24750 },
-            new LeaderboardPanel.LeaderboardData { rank = 3,  playerName = "QUARTER",     score = 21100 },
-            new LeaderboardPanel.LeaderboardData { rank = 4,  playerName = "BOSS_RUSH",   score = 18450 },
-            new LeaderboardPanel.LeaderboardData { rank = 5,  playerName = "1UP",         score = 16800 },
-            new LeaderboardPanel.LeaderboardData { rank = 6,  playerName = "COMBO_X",     score = 14200 },
-            new LeaderboardPanel.LeaderboardData { rank = 7,  playerName = "PUCKMASTER",  score = 11700 },
-            new LeaderboardPanel.LeaderboardData { rank = 8,  playerName = "BUCA_FAN",    score =  9100 },
-            new LeaderboardPanel.LeaderboardData { rank = 9,  playerName = "LUCKY7",      score =  6500 },
-            new LeaderboardPanel.LeaderboardData { rank = 10, playerName = "ROOKIE",      score =  4200 },
-        };
-
-        // Place the player by their local campaign score
-        int myScore = _campaignTotalScore;
-        int myRank = fake.Length + 1;
-        for (int i = 0; i < fake.Length; i++)
-        {
-            if (myScore >= fake[i].score) { myRank = fake[i].rank; break; }
-        }
-
-        bool done = false;
-        leaderboardPanel.Show(fake, myRank, myScore, "YOU", () => done = true);
-        while (!done) yield return null;
+        // No fake/placeholder leaderboard in standalone — those demo names
+        // (ARCADE_KING, P1_HERO, …) must never show to a real player. On a real
+        // Luxodd arcade the genuine leaderboard is shown via LuxoddGameBridge on
+        // a separate path; in standalone we just continue (restart/respawn).
+        yield break;
     }
 
     /// <summary>

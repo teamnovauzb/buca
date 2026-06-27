@@ -41,6 +41,8 @@ public class TimerDisplay : MonoBehaviour
     float _maxTime;
     float _currentTime;
     int _lastDisplayedSecond = -1;
+    int _lastTimeKey = int.MinValue;   // gates the per-frame timer-string rebuild
+    string _lastColorHex;
 
     // Smoothed runtime state — every frame we ease toward a target value
     // instead of recomputing from sin(time). This kills all visual snap.
@@ -133,14 +135,19 @@ public class TimerDisplay : MonoBehaviour
         // Pad the number to a consistent visual width so changing
         // digits don't shift the text's center (a common source of
         // perceived jitter).
-        string numberStr;
-        if (_currentTime < 10f)
-            numberStr = _currentTime.ToString("F1");
-        else
-            numberStr = displaySecond.ToString();
-
-        string word = (displaySecond == 1) ? "SECOND" : "SECONDS";
-        timerText.text = $"TIME LEFT  <size=140%><color=#{numColorHex}><mspace=0.55em>{numberStr,-4}</mspace></color></size>{word}";
+        // Rebuild the string ONLY when the shown value or phase color changes
+        // (not 60×/sec) — avoids a per-frame string allocation. The smooth color
+        // ease still applies every frame via timerText.color above, so it looks
+        // identical. Key = deciseconds under 10s, whole seconds above.
+        int timeKey = _currentTime < 10f ? Mathf.CeilToInt(_currentTime * 10f) : displaySecond;
+        if (timeKey != _lastTimeKey || numColorHex != _lastColorHex)
+        {
+            _lastTimeKey = timeKey;
+            _lastColorHex = numColorHex;
+            string numberStr = _currentTime < 10f ? _currentTime.ToString("F1") : displaySecond.ToString();
+            string word = (displaySecond == 1) ? "SECOND" : "SECONDS";
+            timerText.text = $"TIME LEFT  <size=140%><color=#{numColorHex}><mspace=0.55em>{numberStr,-4}</mspace></color></size>{word}";
+        }
     }
 
     public void Hide()
