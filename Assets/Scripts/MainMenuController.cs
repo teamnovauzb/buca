@@ -48,30 +48,6 @@ public class MainMenuController : MonoBehaviour
     // Auto-start state
     float _autoStartTimer;
     bool _autoStarting;
-    LevelSelectController _levelSelect;
-
-    // Focus-grace: when the OS / editor gives focus back, Input events fire
-    // spurious events for many frames. We detect this by BOTH:
-    //   1. OnApplicationFocus / OnApplicationPause — fires for OS-level focus
-    //   2. realtime gap detection — fires for any pause Unity didn't notify
-    //      us about (editor tab switching, breakpoint pauses, etc.)
-    // Either trigger arms a 30-frame grace where input checks are skipped.
-    int _focusGraceFrames;
-    // Doubled from 30 → 120 frames (~2s @ 60fps). 30 frames wasn't enough
-    // because the user's CLICK that refocuses the window fires
-    // GetMouseButtonDown on the same frame OnApplicationFocus is delivered,
-    // and Unity occasionally delays processing inputs across the focus
-    // boundary by several frames.
-    const int FocusGraceFrameCount = 120;
-    float _lastRealtime;
-    bool _stickEdgeWas;
-    float _lastResetWallTime; // diagnostic — logs which input caused a reset
-    void OnApplicationFocus(bool hasFocus) { if (hasFocus) _focusGraceFrames = FocusGraceFrameCount; }
-    void OnApplicationPause (bool paused)  { if (!paused) _focusGraceFrames = FocusGraceFrameCount; }
-
-    // (DetectRealtimeGap inlined into TickAutoStart — the gap check now
-    // BLOCKS the same-frame input instead of just arming forward grace,
-    // which is what fixes the WebGL refocus-click leak.)
 
     void Start()
     {
@@ -109,131 +85,22 @@ public class MainMenuController : MonoBehaviour
     }
 
     // ═══════════════════════════════════════════════════════════
-    // Auto-start: 45s idle → auto-launches the game
+    // Auto-start: CONTINUOUS attract-mode countdown.
+    //
+    // The countdown drains 30 → 0 every frame and then auto-launches —
+    // it NEVER resets on input and does NOT pause while the level picker
+    // is open. (QA: the background timer must keep counting no matter what
+    // the player does — pressing level buttons, opening the picker, etc.
+    // The old version reset on input + paused under the picker, which made
+    // it look frozen.)
     // ═══════════════════════════════════════════════════════════
     void TickAutoStart()
     {
         if (autoStartSeconds <= 0f || _autoStarting) return;
 
-        // ═══════════════════════════════════════════════════════════
-        // STEP 1 — REALTIME-GAP DETECTION (must run BEFORE input checks).
-        //
-        // WebGL buffers input events during window-unfocused / tab-hidden
-        // periods and REPLAYS them synchronously on the refocus frame.
-        // The mouse-down event from the click that refocused the window
-        // is ALREADY in this frame's input buffer when Update fires —
-        // arming "grace for future frames" via OnApplicationFocus doesn't
-        // protect this same-frame replay.
-        //
-        // Fix: compute the realtime gap UPFRONT. If >300ms passed since
-        // the last frame, this IS the refocus frame — skip ALL input
-        // checks on it AND arm forward grace. Don't trust focus callbacks
-        // (Unity's OnApplicationFocus is unreliable in WebGL).
-        // ═══════════════════════════════════════════════════════════
-        float now = Time.realtimeSinceStartup;
-        float gap = (_lastRealtime > 0f) ? (now - _lastRealtime) : 0f;
-        _lastRealtime = now;
-        bool wasJustRefocused = gap > 0.3f;
-        if (wasJustRefocused)
-        {
-            _focusGraceFrames = FocusGraceFrameCount;
-            Debug.Log($"[MainMenu] Realtime gap {gap:F2}s detected — armed {FocusGraceFrameCount}-frame " +
-                      "input grace + suppressed this frame's inputs (refocus protection).");
-        }
-
-        // Resolve the level-select panel reference once it exists in the scene.
-        if (_levelSelect == null)
-            _levelSelect = FindFirstObjectByType<LevelSelectController>(FindObjectsInactive.Include);
-        bool levelSelectOpen = _levelSelect != null && _levelSelect.IsOpen;
-
-        if (!levelSelectOpen)
-        {
-            // INPUT IS BLOCKED THIS FRAME IF EITHER:
-            //   (a) this is the refocus frame itself (gap > 0.3s), OR
-            //   (b) we're still inside the post-refocus grace window
-            bool blockInputThisFrame = wasJustRefocused || _focusGraceFrames > 0;
-
-            if (blockInputThisFrame)
-            {
-                if (_focusGraceFrames > 0) _focusGraceFrames--;
-                // Snapshot the CURRENT input state into "was" trackers so
-                // when grace ends with the stick still held / a key still
-                // down from before refocus, the very next frame doesn't see
-                // it as a fresh edge.
-                Vector2 graceStick = ArcadeInputAdapter.GetStick();
-                _stickEdgeWas = Mathf.Abs(graceStick.x) > 0.5f || Mathf.Abs(graceStick.y) > 0.5f;
-            }
-            else
-            {
-                // EDGE-ONLY input detection on SPECIFIC keys (not anyKeyDown).
-                // Input.anyKeyDown is the WebGL replay leak: it returns true
-                // for any phantom KeyDown event WebGL synthesizes during the
-                // replay of buffered input. Specific keys (arrow, space, enter,
-                // escape) can't be falsely synthesized by the input replay.
-                Vector2 stick = ArcadeInputAdapter.GetStick();
-                bool stickEdgeNow = Mathf.Abs(stick.x) > 0.5f || Mathf.Abs(stick.y) > 0.5f;
-                bool stickEdge    = stickEdgeNow && !_stickEdgeWas;
-                _stickEdgeWas     = stickEdgeNow;
-
-                bool arcadeButtonDown = ArcadeInputAdapter.ConfirmDown() ||
-                                        ArcadeInputAdapter.CancelDown();
-
-                // Once arcade input has been detected this session, ONLY
-                // arcade sources (stick edge + arcade buttons) may reset the
-                // timer. Cabinet web shells can synthesize phantom keyboard/
-                // mouse events from gamepad activity or focus changes — those
-                // were resetting the countdown with nobody at the keyboard
-                // (QA: "the auto start timer restarts from the main menu").
-                bool arcadeMode = LuxoddGameBridge.IsArcadeInputActive;
-                bool gameplayKeyDown = !arcadeMode && (
-                    Input.GetKeyDown(KeyCode.Return)     || Input.GetKeyDown(KeyCode.Space) ||
-                    Input.GetKeyDown(KeyCode.Escape)     || Input.GetKeyDown(KeyCode.UpArrow) ||
-                    Input.GetKeyDown(KeyCode.DownArrow)  || Input.GetKeyDown(KeyCode.LeftArrow) ||
-                    Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.Tab));
-                bool mouse0Down = !arcadeMode && Input.GetMouseButtonDown(0);
-                bool mouse1Down = !arcadeMode && Input.GetMouseButtonDown(1);
-
-                if (gameplayKeyDown || mouse0Down || mouse1Down || stickEdge || arcadeButtonDown)
-                {
-                    // Diagnostic log throttled to 1 per 2s wall time
-                    if (now - _lastResetWallTime > 2f)
-                    {
-                        _lastResetWallTime = now;
-                        Debug.Log($"[MainMenu] Auto-start timer reset by: " +
-                                  $"gameplayKey={gameplayKeyDown}, mouse0={mouse0Down}, " +
-                                  $"mouse1={mouse1Down}, stickEdge={stickEdge}, " +
-                                  $"arcadeButton={arcadeButtonDown}. (gap={gap:F3}s)");
-                    }
-                    _autoStartTimer = autoStartSeconds;
-                }
-
-                // NOTE: do NOT call PlayGame()/QuitGame() here on Confirm/Cancel.
-                // ArcadeUINavigator owns Black=confirm and invokes the FOCUSED
-                // button's onClick (PLAY→PlayGame, LEVELS→open panel, QUIT→QuitGame).
-                // The old blanket `ConfirmDown → PlayGame` fired regardless of
-                // which button was focused — so pressing Black on QUIT triggered
-                // BOTH QuitGame (via navigator) AND PlayGame (here), producing
-                // the "gameplay starts then the game quits itself" bug. Removed.
-            }
-        }
-        else
-        {
-            // QA req #4: while the Level-Select panel is open, PAUSE the
-            // main-menu auto-start entirely. Previously the timer kept
-            // draining underneath the panel and would eventually fire
-            // PlayGame while the player was still in the level picker
-            // ("auto start ... from the level picker screen"). The panel
-            // has its OWN idle auto-start countdown — that's the only one
-            // that should run while it's open. Reset ours so the player
-            // gets a fresh 30s when they return to the main menu.
-            _autoStartTimer = autoStartSeconds;
-            return;
-        }
-
         float prevTimer = _autoStartTimer;
-        // Clamp dt so a long pause / refocus frame doesn't yank the timer
-        // by ~0.33s (Unity's maximumDeltaTime cap). Cap at 1/30 = 33ms so
-        // worst-case single-frame drift is barely perceptible.
+        // Clamp dt so a long pause / hitch frame doesn't yank the timer by a
+        // big chunk (Unity caps deltaTime at maximumDeltaTime ≈ 0.33s).
         _autoStartTimer -= Mathf.Min(Time.deltaTime, 1f / 30f);
 
         // Audio: tick on every second of the last 5, alarm at 0
@@ -250,11 +117,8 @@ public class MainMenuController : MonoBehaviour
         // Update countdown — always visible with full text + animated number.
         if (autoStartText != null)
         {
-            // Force font + material every frame until it sticks. TMP keeps
-            // a material instance linked to the old font's atlas texture —
-            // changing font alone doesn't update the material, so the old
-            // atlas renders and you see the old glyphs. Resetting
-            // fontSharedMaterial to the new font's default material fixes it.
+            // Force font + material every frame until it sticks (TMP keeps a
+            // material instance linked to the old font's atlas otherwise).
             if (autoStartFont != null && autoStartText.font != autoStartFont)
             {
                 autoStartText.font = autoStartFont;
@@ -268,28 +132,27 @@ public class MainMenuController : MonoBehaviour
 
             if (_autoStartTimer <= 5f)
             {
-                // Last 5s — hot pink, fast pulse, bigger scale bounce.
-                // Each second transition pops the number larger then settles.
-                textColor = new Color(1f, 0.25f, 0.5f, 1f);
+                // Last 5s — hot magenta, fast pulse, bigger scale bounce.
+                textColor = new Color(1f, 0.30f, 0.62f, 1f);
                 float bounce = 1f + 0.2f * Mathf.Abs(Mathf.Sin(Time.time * 7f));
                 scale = bounce;
-                autoStartText.text = $"STARTING IN  <size=150%><color=#FF4080>{secs}</color></size>";
+                autoStartText.text = $"STARTING IN  <size=150%><color=#FF3D9E>{secs}</color></size>";
             }
             else if (_autoStartTimer <= 15f)
             {
-                // 15–5s — yellow warning, gentle pulse.
-                textColor = new Color(1f, 0.85f, 0.3f, 0.95f);
+                // 15–5s — electric cyan warning, gentle pulse (synthwave palette).
+                textColor = new Color(0.40f, 0.90f, 1f, 0.95f);
                 float pulse = 1f + 0.06f * Mathf.Sin(Time.time * 4f);
                 scale = pulse;
-                autoStartText.text = $"AUTO START IN  <size=130%><color=#FFD94A>{secs}</color></size>  SECONDS";
+                autoStartText.text = $"AUTO START IN  <size=130%><color=#2DE2FF>{secs}</color></size>  SECONDS";
             }
             else
             {
-                // 45–15s — calm white, steady, subtle breathing.
-                textColor = new Color(1f, 1f, 1f, 0.65f);
+                // 30–15s — calm light cyan, steady, subtle breathing.
+                textColor = new Color(0.62f, 0.88f, 1f, 0.80f);
                 float breath = 1f + 0.02f * Mathf.Sin(Time.time * 1.5f);
                 scale = breath;
-                autoStartText.text = $"AUTO START IN  <size=120%>{secs}</size>  SECONDS";
+                autoStartText.text = $"AUTO START IN  <size=120%><color=#9AD8FF>{secs}</color></size>  SECONDS";
             }
 
             autoStartText.color = textColor;
@@ -371,17 +234,13 @@ public class MainMenuController : MonoBehaviour
             titleText.fontSize = _titleBaseSize * pulse;
             float hue = (Mathf.Sin(_idleTime * 0.7f) + 1f) * 0.5f; // 0..1
             titleText.color = Color.Lerp(
-                new Color(1f, 0.3f, 0.65f),   // hot pink
-                new Color(0.3f, 0.85f, 1f),   // cyan
+                new Color(1f, 0.22f, 0.72f),  // vivid magenta
+                new Color(0.25f, 0.92f, 1f),  // electric cyan
                 hue);
         }
 
-        // Buttons — subtle position bob ONLY. Scale used to be set here for
-        // a "press-release spring", but it fought with ArcadeUINavigator's
-        // selected-button scale-up. Result was: only LEVELS (which isn't
-        // touched by this script) showed the highlight scale, PLAY and QUIT
-        // didn't. Removing the scale-set here lets ArcadeUINavigator own all
-        // 3 buttons' scale uniformly — consistent highlight on every option.
+        // Buttons — subtle position bob ONLY. ArcadeUINavigator owns the
+        // selected-button scale highlight, so we don't touch scale here.
         if (playRect != null)
         {
             float bob = Mathf.Sin(_idleTime * 1.8f) * 3f;
@@ -411,6 +270,13 @@ public class MainMenuController : MonoBehaviour
     // ═══════════════════════════════════════════════════════════
     public void PlayGame()
     {
+        // PLAY always begins a fresh run at Level 1. Without this, the Game scene
+        // would resume the last-played level (BucaCurrentLevel) — e.g. dumping the
+        // player straight into Level 3. Use the LEVELS picker to jump to a specific
+        // unlocked level instead.
+        PlayerPrefs.SetInt(LevelSelectController.PendingLevelKey, 0);
+        PlayerPrefs.Save();
+
         if (playBurst != null) { playBurst.Clear(true); playBurst.Play(true); }
         _playPressScale = 1.18f;
         if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();

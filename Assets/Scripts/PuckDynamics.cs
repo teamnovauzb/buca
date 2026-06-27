@@ -58,14 +58,22 @@ public class PuckDynamics : MonoBehaviour
 
     Rigidbody _rb;
     Color _emissionBase;
-    ParticleSystem.EmissionModule _emissionModule;
     bool _hasEmissionBase;
     Quaternion _visualRot = Quaternion.identity;
+
+    // Cached trail gradient — reused so the trail never allocates per frame (no GC hitch).
+    Gradient _trailGrad;
+    GradientColorKey[] _trailCK;
+    GradientAlphaKey[] _trailAK;
+    Color _lastTrailColor = new Color(-1f, -1f, -1f, -1f);
 
     void Awake()
     {
         _rb = GetComponent<Rigidbody>();
-        if (idleGlow != null) _emissionModule = idleGlow.emission;
+
+        _trailGrad = new Gradient();
+        _trailCK = new GradientColorKey[2];
+        _trailAK = new[] { new GradientAlphaKey(0.85f, 0f), new GradientAlphaKey(0f, 1f) };
 
         // Instance the puck material so emission tweaks don't leak.
         if (puckRenderer != null && puckRenderer.sharedMaterial != null)
@@ -110,20 +118,30 @@ public class PuckDynamics : MonoBehaviour
             if (driveTrailColor)
             {
                 Color c = Color.Lerp(trailColorSlow, trailColorFast, k);
-                var grad = new Gradient();
-                grad.SetKeys(
-                    new[] { new GradientColorKey(c, 0f), new GradientColorKey(c, 1f) },
-                    new[] { new GradientAlphaKey(0.85f, 0f), new GradientAlphaKey(0f, 1f) });
-                trail.colorGradient = grad;
+                // Only rebuild + reassign when the color actually shifts, reusing the
+                // cached gradient/arrays — so this never allocates per frame.
+                float d = Mathf.Abs(c.r - _lastTrailColor.r) + Mathf.Abs(c.g - _lastTrailColor.g) + Mathf.Abs(c.b - _lastTrailColor.b);
+                if (d > 0.02f)
+                {
+                    _lastTrailColor = c;
+                    _trailCK[0] = new GradientColorKey(c, 0f);
+                    _trailCK[1] = new GradientColorKey(c, 1f);
+                    _trailGrad.SetKeys(_trailCK, _trailAK);
+                    trail.colorGradient = _trailGrad;
+                }
             }
         }
 
         // --- Idle glow emission rate ---
+        // Fetch the module FRESH each frame — Unity forbids caching a module
+        // struct in a field (a stored copy throws "Do not create your own
+        // module instances ...").
         if (idleGlow != null)
         {
-            var rate = _emissionModule.rateOverTime;
+            var emission = idleGlow.emission;
+            var rate = emission.rateOverTime;
             rate.constant = Mathf.Lerp(idleGlowRateSlow, idleGlowRateFast, k);
-            _emissionModule.rateOverTime = rate;
+            emission.rateOverTime = rate;
         }
 
         // --- Puck material emission boost ---

@@ -4,6 +4,7 @@ using UnityEngine.SceneManagement;
 using TMPro;
 using System.Collections;
 using System.Collections.Generic;
+using UnityEngine.EventSystems;
 
 /// <summary>
 /// Full-screen level-select panel. Shown when the player clicks the
@@ -85,6 +86,9 @@ public class LevelSelectController : MonoBehaviour
     float _idleTimer;
     Vector3 _lastMousePos;
     int _inputGraceFramesAfterOpen;
+    int _highestUnlocked;                             // levels 0.._highestUnlocked are playable
+    const string HighestUnlockedKey = "BucaHighestLevel";
+    int _lastIdleLogSec = -1;                          // throttles the idle-countdown log to 1/sec
 
     // Color states for the always-visible idle countdown pill
     static readonly Color _idleNormalColor  = new Color(1f, 0.85f, 0.30f, 1f); // amber
@@ -151,6 +155,19 @@ public class LevelSelectController : MonoBehaviour
         // ignore confirm/back so the same button press that OPENED the
         // panel can't immediately load a level or close the panel.
         if (_inputGraceFramesAfterOpen > 0) _inputGraceFramesAfterOpen--;
+
+        // BUGFIX (Enter loaded the wrong level): keyboard nav moves OUR
+        // highlight (_selectedIndex), but Unity's EventSystem keeps the old
+        // (current-progress) tile selected — so the built-in "Submit" on Enter
+        // fires that stale tile's button and loads the wrong level, overriding
+        // our StartLevel(_selectedIndex). Lock the EventSystem selection to our
+        // focused tile every frame so Submit always hits the focused level.
+        if (EventSystem.current != null && _selectedIndex >= 0 && _selectedIndex < levels.Count
+            && levels[_selectedIndex].button != null
+            && EventSystem.current.currentSelectedGameObject != levels[_selectedIndex].button.gameObject)
+        {
+            EventSystem.current.SetSelectedGameObject(levels[_selectedIndex].button.gameObject);
+        }
 
         // ── Idle auto-close (arcade attract-mode requirement) ──────
         // Reset the timer on ANY input so an engaged player isn't kicked.
@@ -275,80 +292,11 @@ public class LevelSelectController : MonoBehaviour
     {
         if (idleAutoCloseSeconds <= 0f) return;
 
-        // STEP 1 — Realtime-gap detection. Must run BEFORE input checks.
-        // WebGL buffers + synchronously replays input on the refocus frame;
-        // the mouse-down that refocused the window is already in this
-        // frame's input buffer. Detecting the gap upfront and BLOCKING
-        // this frame's input is the only way to ignore the replay.
-        float now = Time.realtimeSinceStartup;
-        float gap = (_lastRealtime > 0f) ? (now - _lastRealtime) : 0f;
-        _lastRealtime = now;
-        bool wasJustRefocused = gap > 0.3f;
-        if (wasJustRefocused)
-        {
-            _focusGraceFrames = FocusGraceFrameCount;
-            _lastMousePos = Input.mousePosition;
-        }
-
-        // INPUT IS BLOCKED IF EITHER this is the refocus frame OR we're
-        // still in the post-refocus grace window.
-        bool blockInputThisFrame = wasJustRefocused || _focusGraceFrames > 0;
-        if (blockInputThisFrame)
-        {
-            if (_focusGraceFrames > 0) _focusGraceFrames--;
-            _lastMousePos = Input.mousePosition;
-            Vector2 graceStick = ArcadeInputAdapter.GetStick();
-            _stickEdgeWas = Mathf.Abs(graceStick.x) > 0.5f || Mathf.Abs(graceStick.y) > 0.5f;
-            return;
-        }
-
-        // EDGE-ONLY input detection on SPECIFIC keys (not anyKeyDown).
-        // Input.anyKeyDown is the WebGL replay leak — replace with explicit
-        // gameplay keys that can't be falsely synthesized by input replay.
-        Vector2 stick = ArcadeInputAdapter.GetStick();
-        bool stickEdgeNow = Mathf.Abs(stick.x) > 0.5f || Mathf.Abs(stick.y) > 0.5f;
-        bool stickEdge    = stickEdgeNow && !_stickEdgeWas;
-        _stickEdgeWas     = stickEdgeNow;
-
-        bool anyArcadeButtonDown = false;
-        for (int i = 0; i < 8; i++)
-            if (ArcadeInputAdapter.GetButtonDown((ArcadeInputAdapter.Button)i))
-            { anyArcadeButtonDown = true; break; }
-
-        // Mouse position delta — only count as "movement" if it's a real
-        // intentional drag (>50px), not a tiny jiggle or a refocus jump.
-        Vector3 mp = Input.mousePosition;
-        Vector3 mouseDelta = mp - _lastMousePos;
-        bool mouseMoved = mouseDelta.sqrMagnitude > 2500f && mouseDelta.sqrMagnitude < 40000f;
-        _lastMousePos = mp;
-
-        // Same arcade-mode restriction as MainMenuController.TickAutoStart:
-        // once arcade input is detected, only arcade sources reset the idle
-        // timer — cabinet web shells can synthesize phantom keyboard/mouse
-        // events that were resetting the countdown by themselves.
-        bool arcadeMode = LuxoddGameBridge.IsArcadeInputActive;
-        bool gameplayKeyDown = !arcadeMode && (
-            Input.GetKeyDown(KeyCode.Return)     || Input.GetKeyDown(KeyCode.Space) ||
-            Input.GetKeyDown(KeyCode.Escape)     || Input.GetKeyDown(KeyCode.UpArrow) ||
-            Input.GetKeyDown(KeyCode.DownArrow)  || Input.GetKeyDown(KeyCode.LeftArrow) ||
-            Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.Tab));
-
-        bool active = stickEdge
-                    || anyArcadeButtonDown
-                    || gameplayKeyDown
-                    || (!arcadeMode && mouseMoved)
-                    || (!arcadeMode && Input.GetMouseButtonDown(0));
-
-        if (active)
-        {
-            _idleTimer = idleAutoCloseSeconds;
-        }
-        else
-        {
-            // Clamp dt so a long pause / refocus frame doesn't yank the
-            // timer by Unity's maximumDeltaTime (~0.33s). Cap at 33ms.
-            _idleTimer -= Mathf.Min(Time.unscaledDeltaTime, 1f / 30f);
-        }
+        // Continuous countdown at REAL speed — never resets on input and is
+        // never paused by focus-grace. (It used to clamp dt to 1/30 AND skip
+        // every frame during a 120-frame "refocus grace"; at the editor's low
+        // 4K framerate that made the 15s timer crawl — the "too slow" bug.)
+        _idleTimer -= Time.unscaledDeltaTime;
 
         // Always visible — pill in the top-right corner counts down from
         // idleAutoCloseSeconds → 0. Below 5s the text turns red and pulses
@@ -374,9 +322,11 @@ public class LevelSelectController : MonoBehaviour
                 idleCountdownText.transform.localScale = Vector3.one;
             }
         }
-        else if (curSec <= 5 && curSec > 0)
+        else if (curSec <= 5 && curSec > 0 && curSec != _lastIdleLogSec)
         {
-            // No UI wired — log so we can verify the timer is alive
+            // No UI wired — log ONCE per second (not every frame) so it doesn't
+            // spam ~60×/s into the build's console.
+            _lastIdleLogSec = curSec;
             Debug.Log($"[LevelSelectController] Idle auto-close in {curSec}s");
         }
 
@@ -441,8 +391,10 @@ public class LevelSelectController : MonoBehaviour
 
         // Initial focus = last played level (clamped), so the joystick
         // navigation starts in a meaningful spot.
+        // Start focus on the player's current level, but never on a LOCKED
+        // tile (RefreshAll above has just computed _highestUnlocked).
         int saved = PlayerPrefs.GetInt("BucaCurrentLevel", 0);
-        _selectedIndex = Mathf.Clamp(saved, 0, Mathf.Max(0, levels.Count - 1));
+        _selectedIndex = Mathf.Clamp(saved, 0, Mathf.Min(_highestUnlocked, Mathf.Max(0, levels.Count - 1)));
         UpdateSelectionVisuals();
 
         // Reset idle timer so the panel doesn't auto-close immediately
@@ -477,8 +429,23 @@ public class LevelSelectController : MonoBehaviour
         _animCo = StartCoroutine(FadeRoutine(false));
     }
 
+    bool _starting;
     public void StartLevel(int index)
     {
+        // Guard: pressing Enter can fire BOTH our own handler and Unity's
+        // EventSystem "Submit" in the same frame. Without this, the second call
+        // could overwrite the pending level. Load exactly once.
+        if (_starting) return;
+
+        // Progression LOCK: a level beyond the highest unlocked one can't be
+        // started — by mouse OR keyboard. Pressing Enter on it does nothing.
+        if (index > PlayerPrefs.GetInt(HighestUnlockedKey, 0))
+        {
+            if (AudioManager.Instance != null) AudioManager.Instance.PlayNavTick(); // soft "locked" blip
+            return;
+        }
+
+        _starting = true;
         if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
         PlayerPrefs.SetInt(PendingLevelKey, index);
         PlayerPrefs.SetInt("BucaCurrentLevel", index);
@@ -491,6 +458,15 @@ public class LevelSelectController : MonoBehaviour
     // ─────────────────────────────────────────────────────────
     void RefreshAll()
     {
+        // ── Progression unlock ─────────────────────────────────────
+        // Levels 0.._highestUnlocked are playable; the rest are locked.
+        // Driven SOLELY by the saved highest-completed value: it defaults to 0,
+        // so a FRESH game has only Level 1 unlocked, and it is bumped exactly
+        // one step when a level is completed (in LevelManager). We deliberately
+        // do NOT reconstruct it from per-level star data — that was the bug that
+        // auto-unlocked old progress.
+        _highestUnlocked = Mathf.Clamp(PlayerPrefs.GetInt(HighestUnlockedKey, 0), 0, Mathf.Max(0, levels.Count - 1));
+
         int totalCompleted = 0;
         int totalStars = 0;
         int totalScore = 0;
@@ -500,6 +476,7 @@ public class LevelSelectController : MonoBehaviour
             int stars = PlayerPrefs.GetInt(LevelManager.PrefLevelStars + i, 0);
             int score = PlayerPrefs.GetInt(LevelManager.PrefLevelScore + i, 0);
             var entry = levels[i];
+            bool locked = i > _highestUnlocked;
 
             if (entry.stars != null)
                 for (int s = 0; s < entry.stars.Length; s++)
@@ -509,10 +486,12 @@ public class LevelSelectController : MonoBehaviour
                 }
 
             bool completed = score > 0 || stars > 0;
-            if (entry.checkmark != null) entry.checkmark.enabled = completed;
+            if (entry.checkmark != null) entry.checkmark.enabled = completed && !locked;
 
             if (entry.bestTimeLabel != null)
-                entry.bestTimeLabel.text = ""; // hook here if you track best times
+                entry.bestTimeLabel.text = "";
+
+            SetTileLocked(entry, locked);
 
             if (completed) totalCompleted++;
             totalStars += stars;
@@ -528,6 +507,83 @@ public class LevelSelectController : MonoBehaviour
             float fill = levels.Count > 0 ? (float)totalCompleted / levels.Count : 0f;
             progressBarFill.anchorMax = new Vector2(fill, 1f);
         }
+    }
+
+    /// <summary>Apply/clear the locked look on a tile: disable its button so it
+    /// can't be started (mouse OR keyboard), and show a dim padlock overlay.
+    /// The overlay is created lazily, so no tile rebuild is needed.</summary>
+    void SetTileLocked(LevelEntry entry, bool locked)
+    {
+        if (entry.button != null) entry.button.interactable = !locked;
+
+        Transform tileT = entry.button != null ? entry.button.transform
+                        : (entry.tileBackground != null ? entry.tileBackground.transform : null);
+        if (tileT == null) return;
+
+        var lockT = tileT.Find("LockOverlay");
+        if (locked && lockT == null)
+        {
+            var ov = new GameObject("LockOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            ov.transform.SetParent(tileT, false);
+            var rt = (RectTransform)ov.transform;
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+            var ovImg = ov.GetComponent<Image>();
+            ovImg.color = new Color(0.02f, 0.02f, 0.05f, 0.74f); // dim + disabled look
+            ovImg.raycastTarget = true;                          // swallow clicks on locked tiles
+
+            var ic = new GameObject("LockIcon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            ic.transform.SetParent(ov.transform, false);
+            var irt = (RectTransform)ic.transform;
+            irt.anchorMin = irt.anchorMax = new Vector2(0.5f, 0.5f);
+            irt.sizeDelta = new Vector2(58f, 58f);
+            irt.anchoredPosition = Vector2.zero;
+            var icImg = ic.GetComponent<Image>();
+            icImg.sprite = LockSprite();
+            icImg.color = new Color(0.85f, 0.88f, 1f, 0.92f);
+            icImg.raycastTarget = false;
+
+            lockT = ov.transform;
+        }
+        if (lockT != null) lockT.gameObject.SetActive(locked);
+    }
+
+    static Sprite _lockSprite;
+    /// <summary>Procedural padlock sprite (white, tintable) — no art asset needed.</summary>
+    static Sprite LockSprite()
+    {
+        if (_lockSprite != null) return _lockSprite;
+        const int S = 64;
+        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+        var px = new Color32[S * S];
+        var clear = new Color32(255, 255, 255, 0);
+        var white = new Color32(255, 255, 255, 255);
+        for (int i = 0; i < px.Length; i++) px[i] = clear;
+
+        // Body: rectangle, x[14..50] y[6..34]
+        for (int y = 6; y <= 34; y++)
+            for (int x = 14; x <= 50; x++)
+                px[y * S + x] = white;
+        // Shackle: ring centred (32,33), radius 8..13, upper half only
+        var c = new Vector2(32f, 33f);
+        for (int y = 33; y < 58; y++)
+            for (int x = 12; x < 52; x++)
+            {
+                float d = Vector2.Distance(new Vector2(x, y), c);
+                if (d >= 8f && d <= 13f) px[y * S + x] = white;
+            }
+        // Keyhole: punch a hole + slot in the body
+        for (int y = 12; y <= 28; y++)
+            for (int x = 27; x <= 37; x++)
+            {
+                bool hole = Vector2.Distance(new Vector2(x, y), new Vector2(32f, 24f)) <= 3.4f;
+                bool slot = x >= 31 && x <= 33 && y >= 16 && y <= 24;
+                if (hole || slot) px[y * S + x] = clear;
+            }
+
+        tex.SetPixels32(px); tex.Apply();
+        _lockSprite = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), 100f);
+        return _lockSprite;
     }
 
     // ─────────────────────────────────────────────────────────

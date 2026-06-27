@@ -77,6 +77,20 @@ public class PuckController : MonoBehaviour
     void Awake()
     {
         _rb = GetComponent<Rigidbody>();
+
+        // QA: "ball too fast" — cap the launch to a calmer speed. Lower these
+        // two numbers to make it slower, raise them to make it faster.
+        maxLaunchSpeed = Mathf.Min(maxLaunchSpeed, 14f);
+        forceMultiplier = Mathf.Min(forceMultiplier, 5f);
+
+        // QA: "too hard" — make the hole more FORGIVING so a near-miss that's
+        // roughly heading at the hole gets drawn in. Wider catch radius, stronger
+        // pull, and a looser aim tolerance (dot 0 = up to 90° off still pulls).
+        // Bigger numbers = easier; nudge these to fine-tune the difficulty.
+        magnetRange = Mathf.Max(magnetRange, 2.3f);   // was 1.5 — wider catch zone
+        magnetForce = Mathf.Max(magnetForce, 13f);    // was 8  — stronger pull
+        magnetAimDot = Mathf.Min(magnetAimDot, 0f);   // was 0.3 — forgive glancing approaches
+
         if (aimLine != null) aimLine.enabled = false;
         if (previewLine != null)
         {
