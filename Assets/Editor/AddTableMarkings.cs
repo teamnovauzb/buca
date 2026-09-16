@@ -12,7 +12,6 @@ using UnityEditor;
 /// Per level it adds, on the floor:
 ///   • Target rings around the hole (dark-wood + brass concentric circles)
 ///   • Two faint lane-border lines down the long sides
-///   • A subtle center medallion
 ///
 /// Wood-and-brass tones match the table frame. Names prefixed "NM4_" (idempotent).
 /// AFTER running you can DELETE THIS FILE.
@@ -46,7 +45,7 @@ public static class AddTableMarkings
         AssetDatabase.Refresh();
 
         if (!BucaBatch.Silent) EditorUtility.DisplayDialog("Table markings added ✓",
-            $"Added premium wood + brass markings (target rings, lane lines, center medallion) to {n} levels.\n\n" +
+            $"Added premium wood + brass markings (target rings and lane lines) to {n} levels.\n\n" +
             "All FLAT with NO colliders — gameplay and difficulty are 100% unchanged.\n\n" +
             "Press ▶ Play to see the board look finished. You can DELETE this file now.",
             "OK");
@@ -75,10 +74,6 @@ public static class AddTableMarkings
             // Faint lane-border lines down the long sides (just inside the rails)
             Strip(root, "LaneL", -3.85f, 0f, 13f);
             Strip(root, "LaneR",  3.85f, 0f, 13f);
-
-            // Subtle center medallion
-            Disc(root, "MedalDark",  0f, 0f, 1.25f, 0.011f, _inlay);
-            Disc(root, "MedalBrass", 0f, 0f, 0.80f, 0.014f, _brass);
 
             PrefabUtility.SaveAsPrefabAsset(root, path);
             return 1;

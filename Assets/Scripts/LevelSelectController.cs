@@ -13,8 +13,8 @@ using UnityEngine.EventSystems;
 /// checkmarks, shows campaign totals in the footer, and handles
 /// open/close animations.
 ///
-/// Tiles persist their per-level stars/score in PlayerPrefs (managed
-/// by LevelManager during gameplay). On click, the level index is
+/// Tiles persist their per-level stars, points and best golf result in
+/// PlayerPrefs (managed by LevelManager during gameplay). On click, the level index is
 /// stashed in PlayerPrefs as "BucaPendingLevel" and the Game scene is
 /// loaded; LevelManager reads that value in Start() and jumps to it.
 /// </summary>
@@ -39,6 +39,9 @@ public class LevelSelectController : MonoBehaviour
     [Header("Panel structure (assigned by MenuSetupHelper)")]
     public CanvasGroup panelGroup;
     public RectTransform panelCard;
+    [Tooltip("Optional — keeps the card inside the safe area. When set, the open/close " +
+             "pop is composed onto its fit scale instead of overwriting panelCard.localScale.")]
+    public SafeAreaFitter cardFitter;
     public Button backButton;
 
     [Header("Footer stats labels")]
@@ -49,7 +52,9 @@ public class LevelSelectController : MonoBehaviour
 
     [Header("Star colors")]
     public Color starLit   = new Color(1f, 0.9f, 0.3f, 1f);
-    public Color starUnlit = new Color(1f, 1f, 1f, 0.12f);
+    // Un-earned stars must still be readable as empty rating slots. The old
+    // 0.12 alpha made them effectively invisible on the dark/locked tiles.
+    public Color starUnlit = new Color(0.58f, 0.72f, 0.88f, 0.48f);
 
     [Header("Selection (joystick navigation)")]
     [Tooltip("How many tiles per row — needed for up/down navigation. Set by MenuSetupHelper.")]
@@ -67,10 +72,10 @@ public class LevelSelectController : MonoBehaviour
     public float fadeDuration = 0.28f;
 
     [Header("Idle auto-close (arcade attract mode)")]
-    [Tooltip("Seconds of no input before the panel auto-closes. " +
-             "QA req: 15s for the level select panel (max 30s for any arcade menu). 0 = disabled.")]
-    public float idleAutoCloseSeconds = 15f;
-    [Tooltip("QA req #4: on idle timeout, AUTO-START THE GAME with the currently focused tile " +
+    [Tooltip("Seconds before the Main Screen level picker auto-starts. " +
+             "Required value: 30 seconds. 0 = disabled.")]
+    public float idleAutoCloseSeconds = 30f;
+    [Tooltip("On idle timeout, AUTO-START THE GAME at Level 1 " +
              "instead of returning to the main menu (which would just spawn another 30s wait). " +
              "Set false if you want classic close-to-main-menu behavior.")]
     public bool idleAutoStartsGame = true;
@@ -87,7 +92,7 @@ public class LevelSelectController : MonoBehaviour
     Vector3 _lastMousePos;
     int _inputGraceFramesAfterOpen;
     int _highestUnlocked;                             // levels 0.._highestUnlocked are playable
-    const string HighestUnlockedKey = "BucaHighestLevel";
+    public const string HighestUnlockedKey = "BucaHighestLevel";
     int _lastIdleLogSec = -1;                          // throttles the idle-countdown log to 1/sec
 
     // Color states for the always-visible idle countdown pill
@@ -110,16 +115,14 @@ public class LevelSelectController : MonoBehaviour
             panelGroup.blocksRaycasts = false;
         }
 
-        // QA req #4: level-select panel auto-closes after 15s idle (tighter
-        // than the 30s general arcade ceiling). Runtime-clamp so an old
-        // scene with a higher serialized value still complies — this fix
-        // applies the moment Play starts, no Inspector edit needed.
-        if (idleAutoCloseSeconds > 15f)
+        // The level picker is part of the Main Screen. Always begin its
+        // auto-start countdown at 30 seconds, even in older scenes that
+        // still contain the former 15-second serialized value.
+        if (!Mathf.Approximately(idleAutoCloseSeconds, 30f))
         {
             Debug.LogWarning($"[LevelSelectController] idleAutoCloseSeconds was {idleAutoCloseSeconds} " +
-                             "in the scene — clamping to 15 (QA requirement). " +
-                             "Update the value in the Inspector to 15 to silence this warning.");
-            idleAutoCloseSeconds = 15f;
+                             "in the scene — setting Main Screen auto-start to 30 seconds.");
+            idleAutoCloseSeconds = 30f;
         }
     }
 
@@ -295,7 +298,7 @@ public class LevelSelectController : MonoBehaviour
         // Continuous countdown at REAL speed — never resets on input and is
         // never paused by focus-grace. (It used to clamp dt to 1/30 AND skip
         // every frame during a 120-frame "refocus grace"; at the editor's low
-        // 4K framerate that made the 15s timer crawl — the "too slow" bug.)
+        // low framerate that could make the countdown crawl — the "too slow" bug.)
         _idleTimer -= Time.unscaledDeltaTime;
 
         // Always visible — pill in the top-right corner counts down from
@@ -333,17 +336,13 @@ public class LevelSelectController : MonoBehaviour
         if (_idleTimer <= 0f)
         {
             _idleTimer = idleAutoCloseSeconds; // reset so we don't fire twice
-            if (idleAutoStartsGame
-                && _selectedIndex >= 0 && _selectedIndex < levels.Count)
+            if (idleAutoStartsGame && levels.Count > 0)
             {
-                // QA req #4: bypass the "return to main menu, wait another
-                // 30s for auto-start" two-step. On idle timeout, jump
-                // straight into the currently-focused level. The selection
-                // defaults to the player's last-played level (set in Show())
-                // so the auto-start picks an appropriate one.
-                Debug.Log($"[LevelSelectController] Idle auto-close expired — auto-starting " +
-                          $"level {_selectedIndex + 1} (player's last-played).");
-                StartLevel(_selectedIndex);
+                // Attract mode must always begin a fresh run at Level 1.
+                // The highlighted tile is only for manual selection and may
+                // still point at the player's saved Level 13/15 progress.
+                Debug.Log("[LevelSelectController] Idle auto-close expired — auto-starting Level 1.");
+                StartLevel(0);
             }
             else
             {
@@ -475,23 +474,35 @@ public class LevelSelectController : MonoBehaviour
         {
             int stars = PlayerPrefs.GetInt(LevelManager.PrefLevelStars + i, 0);
             int score = PlayerPrefs.GetInt(LevelManager.PrefLevelScore + i, 0);
+            int bestStrokes = PlayerPrefs.GetInt(LevelManager.PrefLevelBestStrokes + i, 0);
+            int par = PlayerPrefs.GetInt(LevelManager.PrefLevelPar + i, 0);
             var entry = levels[i];
             bool locked = i > _highestUnlocked;
-
-            if (entry.stars != null)
-                for (int s = 0; s < entry.stars.Length; s++)
-                {
-                    if (entry.stars[s] == null) continue;
-                    entry.stars[s].color = (s < stars) ? starLit : starUnlit;
-                }
 
             bool completed = score > 0 || stars > 0;
             if (entry.checkmark != null) entry.checkmark.enabled = completed && !locked;
 
             if (entry.bestTimeLabel != null)
-                entry.bestTimeLabel.text = "";
+            {
+                if (completed && bestStrokes > 0 && par > 0)
+                {
+                    int toPar = bestStrokes - par;
+                    entry.bestTimeLabel.text =
+                        $"BEST {bestStrokes}\nPAR {par}  {LevelManager.FormatToPar(toPar)}";
+                    entry.bestTimeLabel.fontSize = 15f;
+                    entry.bestTimeLabel.color = toPar <= 0
+                        ? new Color(1f, 0.86f, 0.30f, 1f)
+                        : new Color(1f, 0.38f, 0.50f, 1f);
+                    entry.bestTimeLabel.rectTransform.sizeDelta = new Vector2(125f, 44f);
+                }
+                else
+                {
+                    entry.bestTimeLabel.text = "";
+                }
+            }
 
             SetTileLocked(entry, locked);
+            PresentStars(entry, Mathf.Clamp(stars, 0, 3));
 
             if (completed) totalCompleted++;
             totalStars += stars;
@@ -507,6 +518,64 @@ public class LevelSelectController : MonoBehaviour
             float fill = levels.Count > 0 ? (float)totalCompleted / levels.Count : 0f;
             progressBarFill.anchorMax = new Vector2(fill, 1f);
         }
+    }
+
+    /// <summary>
+    /// Keeps all three rating slots readable on every level tile. The star row
+    /// is deliberately moved above the lazily-created lock overlay: locked
+    /// levels show three dim stars, while completed levels show the exact saved
+    /// rating. Star graphics never intercept pointer input.
+    /// </summary>
+    void PresentStars(LevelEntry entry, int earnedStars)
+    {
+        if (entry == null || entry.stars == null) return;
+
+        Transform starRow = null;
+        for (int s = 0; s < entry.stars.Length; s++)
+        {
+            var star = entry.stars[s];
+            if (star == null) continue;
+
+            bool earned = s < earnedStars;
+            star.enabled = true;
+            star.raycastTarget = false;
+            // Existing MainMenu scenes may still serialize the legacy 0.12
+            // alpha. Enforce the readable floor at runtime as well as in the
+            // field default so no scene rebuild is required.
+            Color emptyColor = starUnlit;
+            emptyColor.a = Mathf.Max(0.48f, emptyColor.a);
+            star.color = earned ? starLit : emptyColor;
+            starRow = star.transform.parent;
+
+            // A subtle outline keeps both earned and empty stars legible over
+            // every chapter background without changing the star artwork.
+            var outline = star.GetComponent<Outline>();
+            if (outline == null) outline = star.gameObject.AddComponent<Outline>();
+            outline.effectColor = earned
+                ? new Color(0.55f, 0.25f, 0.02f, 0.80f)
+                : new Color(0.02f, 0.08f, 0.16f, 0.82f);
+            outline.effectDistance = new Vector2(1.5f, -1.5f);
+            outline.useGraphicAlpha = true;
+        }
+
+        if (starRow != null)
+        {
+            starRow.gameObject.SetActive(true);
+            starRow.SetAsLastSibling();
+        }
+    }
+
+    /// <summary>
+    /// Re-read progress after an asynchronous Luxodd state response. Safe while
+    /// hidden or open; an open picker also moves focus off a newly-locked tile.
+    /// </summary>
+    public void RefreshProgressFromStorage()
+    {
+        RefreshAll();
+        if (!_open) return;
+        _selectedIndex = Mathf.Clamp(_selectedIndex, 0,
+            Mathf.Min(_highestUnlocked, Mathf.Max(0, levels.Count - 1)));
+        UpdateSelectionVisuals();
     }
 
     /// <summary>Apply/clear the locked look on a tile: disable its button so it
@@ -596,7 +665,7 @@ public class LevelSelectController : MonoBehaviour
         float targetAlpha = show ? 1f : 0f;
         float t = 0f;
 
-        if (show && panelCard != null) panelCard.localScale = Vector3.one * 0.92f;
+        if (show) SetCardScale(0.92f);
         _open = show;
 
         while (t < fadeDuration)
@@ -605,19 +674,35 @@ public class LevelSelectController : MonoBehaviour
             float k = Mathf.Clamp01(t / fadeDuration);
             float e = show ? EaseOutBack(k, 1.4f) : k;
             panelGroup.alpha = Mathf.Lerp(startAlpha, targetAlpha, k);
-            if (panelCard != null)
-            {
-                float s = show ? Mathf.Lerp(0.92f, 1f, e) : Mathf.Lerp(1f, 0.95f, k);
-                panelCard.localScale = new Vector3(s, s, 1f);
-            }
+            float s = show ? Mathf.Lerp(0.92f, 1f, e) : Mathf.Lerp(1f, 0.95f, k);
+            SetCardScale(s);
             yield return null;
         }
 
         panelGroup.alpha = targetAlpha;
         panelGroup.interactable = show;
         panelGroup.blocksRaycasts = show;
+        SetCardScale(show ? 1f : 0.95f);
         // Stay GameObject-active even when hidden — see Awake() comment.
         _animCo = null;
+    }
+
+    /// <summary>
+    /// Applies the open/close pop. When a <see cref="cardFitter"/> is present it
+    /// owns panelCard.localScale (to keep the card inside the safe area), so the
+    /// pop is fed in as a multiplier instead of overwriting the scale directly.
+    /// </summary>
+    void SetCardScale(float s)
+    {
+        if (cardFitter != null)
+        {
+            cardFitter.animScale = s;
+            cardFitter.Apply();
+        }
+        else if (panelCard != null)
+        {
+            panelCard.localScale = new Vector3(s, s, 1f);
+        }
     }
 
     static float EaseOutBack(float t, float overshoot)

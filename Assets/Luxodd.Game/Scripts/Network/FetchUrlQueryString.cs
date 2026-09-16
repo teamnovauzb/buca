@@ -4,6 +4,10 @@ using System.Web;
 using Luxodd.Game.Scripts.HelpersAndUtils.Logger;
 using UnityEngine;
 
+#if UNITY_WEBGL && !UNITY_EDITOR
+using System.Runtime.InteropServices;
+#endif
+
 namespace Luxodd.Game.Scripts.Network
 {
     public class FetchUrlQueryString : MonoBehaviour
@@ -18,18 +22,20 @@ namespace Luxodd.Game.Scripts.Network
 
         private NameValueCollection _queryString;
 
-        private static string GetURLFromQueryStr()
-        {
-            return Application.absoluteURL;
-        }
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [DllImport("__Internal")]
+        private static extern string GetURLFromQueryStr();
+#else
+        private static string GetURLFromQueryStr() => Application.absoluteURL;
+#endif
 
-        private void Start()
+        private void Awake()
         {
             _launchQueryString = ReadURLFromQueryString();
             Token = ParseTokenFromURL();
             WSUrl = ParseWebSocketUrlFromQueryString();
-            LoggerHelper.Log("App is running on the url>>>> " + _launchQueryString);
-            LoggerHelper.Log($"[{GetType().Name}][{nameof(Start)}] OK, Token: {Token}, WSUrl: {WSUrl}");
+            LoggerHelper.Log($"[{GetType().Name}][{nameof(Awake)}] URL received; " +
+                             $"token present: {!string.IsNullOrEmpty(Token)}, ws present: {!string.IsNullOrEmpty(WSUrl)}");
         }
 
         private string ReadURLFromQueryString()
@@ -42,11 +48,24 @@ namespace Luxodd.Game.Scripts.Network
             var url = _launchQueryString;
             if (string.IsNullOrEmpty(url))
             {
-                return "URL is empty";
+                return null;
             }
 
-            var uri = new Uri(url);
-            string queryString = uri.Query;
+            string queryString;
+            if (url.StartsWith("?", StringComparison.Ordinal))
+            {
+                queryString = url;
+            }
+            else if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                queryString = uri.Query;
+            }
+            else
+            {
+                LoggerHelper.LogWarning($"[{GetType().Name}] Could not parse launch URL.");
+                return null;
+            }
+
             var parametersCollection = HttpUtility.ParseQueryString(queryString);
             _queryString = parametersCollection;
             //LoggerHelper.Log($"[{GetType().Name}][{nameof(ParseTokenFromURL)}] OK, URL: {uri}, Query: {queryString}");

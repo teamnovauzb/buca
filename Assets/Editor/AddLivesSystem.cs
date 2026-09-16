@@ -11,7 +11,7 @@ using System.IO;
 /// <summary>
 /// ONE-SHOT: bake the UI for the lives system into the Game scene and wire it to
 /// LevelManager — the logic itself lives in LevelManager (works for ALL levels):
-///   • a HUD "LIVES ● ● ●" counter (top-center)
+///   • a responsive heart counter with enough slots for the largest level budget
 ///   • a "LEVEL FAILED" screen with RETRY + EXIT buttons (hidden until lives hit 0)
 ///
 ///   RealBuca ▸ Add Lives System
@@ -115,10 +115,10 @@ public static class AddLivesSystem
         AssetDatabase.Refresh();
 
         if (!BucaBatch.Silent) EditorUtility.DisplayDialog("Lives system added ✓",
-            "• HUD now shows LIVES ● ● ● (top-center).\n" +
-            "• A 'LEVEL FAILED' screen with RETRY / EXIT appears when lives hit 0.\n" +
-            "• Works on ALL levels (logic is in LevelManager).\n\n" +
-            "Press ▶ Play and miss 3 shots to test. You can DELETE this file (keep LevelFailedPanel.cs).",
+            "• HUD now has " + hearts + " heart slots and shows only the current level budget.\n" +
+            "• A LEVEL FAILED screen with RETRY / EXIT appears when lives reach 0.\n" +
+            "• Works on all 30 levels through LevelSettings.\n\n" +
+            "You can now test the level budgets yourself in Play Mode.",
             "OK");
     }
 

@@ -120,7 +120,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.06, z: 5.3}
-  m_LocalScale: {x: 0.645969, y: 0.05, z: 0.645969}
+  m_LocalScale: {x: 0.6460324, y: 0.05, z: 0.6460324}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 998012816586668498}
@@ -201,7 +201,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.38112167
+  m_Radius: 0.3811591
   m_Center: {x: 0.000000059604645, y: 0, z: -0.00000008940697}
 --- !u!114 &9119554623986844755
 MonoBehaviour:
@@ -333,7 +333,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.05, z: 5.3}
-  m_LocalScale: {x: 0.872931, y: 0.04, z: 0.872931}
+  m_LocalScale: {x: 0.8730167, y: 0.04, z: 0.8730167}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 998012816586668498}
@@ -694,8 +694,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6c9b7f4f35f6d4ae5b8a369ce9ef2900, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KickerBumper
-  kickSpeed: 10
-  restitutionGain: 1.15
+  kickSpeed: 11.068966
+  restitutionGain: 1.1534483
   maxSpeed: 14
 --- !u!1 &2314182465930005987
 GameObject:
@@ -2327,6 +2327,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 998012816586668498}
+  - component: {fileID: 4953789621070542473}
   m_Layer: 0
   m_Name: Level_21
   m_TagString: Untagged
@@ -2374,6 +2375,24 @@ Transform:
   - {fileID: 4701756906713486397}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4953789621070542473
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7819164862700141632}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ecb669e9594e44aad80fff25de3f5283, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDifficultyProfile
+  balanceVersion: 2
+  levelNumber: 21
+  chapter: 4
+  difficultyRating: 4
+  difficultyIndex: 21
+  mechanicHint: 'Bounce chain: control three existing launch pads.'
 --- !u!1 &8171549968929735769
 GameObject:
   m_ObjectHideFlags: 0

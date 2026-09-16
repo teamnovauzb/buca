@@ -961,7 +961,7 @@ public class BucaSetupHelper : MonoBehaviour
         tmp.outlineColor = new Color(0f, 0f, 0f, 0.85f);
         tmp.raycastTarget = false;
 
-        // ─── Arcade-mode visuals (joystick + Black button + power ring) ─
+        // ─── Arcade-mode visuals (joystick + Black button + power ring) ───
         // Hidden by default; TutorialController flips them on when arcade
         // input is detected. Keeps the existing mouse demo unchanged.
 
@@ -1006,8 +1006,8 @@ public class BucaSetupHelper : MonoBehaviour
         hl.color = new Color(1f, 1f, 1f, 0.6f);
         hl.raycastTarget = false;
 
-        // Black button — solid dark circle that brightens when "pressed"
-        var blkGO = new GameObject("GhostBlackButton", typeof(RectTransform));
+        // Black gameplay button — brightens while the player is shown charging.
+        var blkGO = new GameObject("GhostFireButton", typeof(RectTransform));
         blkGO.transform.SetParent(rootGO.transform, false);
         var blkRT = (RectTransform)blkGO.transform;
         blkRT.anchorMin = blkRT.anchorMax = blkRT.pivot = new Vector2(0.5f, 0.5f);
@@ -1015,7 +1015,7 @@ public class BucaSetupHelper : MonoBehaviour
         blkRT.sizeDelta = new Vector2(90f, 90f);
         var blkImg = blkGO.AddComponent<Image>();
         blkImg.sprite = circle;
-        blkImg.color = new Color(0.18f, 0.18f, 0.22f, 1f);
+        blkImg.color = new Color(0.04f, 0.04f, 0.055f, 1f);
         blkImg.raycastTarget = false;
         // White outline ring around the button
         var blkRingGO = new GameObject("Ring", typeof(RectTransform));
@@ -1060,7 +1060,7 @@ public class BucaSetupHelper : MonoBehaviour
         tut.instructionText = tmp;
         tut.ghostJoystick = joyRT;
         tut.ghostJoystickBall = jballRT;
-        tut.ghostBlackButton = blkImg;
+        tut.ghostFireButton = blkImg;
         tut.ghostPowerRing = ringImg;
 
         levelManager.tutorial = tut;
@@ -1090,7 +1090,7 @@ public class BucaSetupHelper : MonoBehaviour
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 13) Timer display (countdown text + fill bar)
+    // 13) Circular timer display beneath the top-right Restart control
     // ═══════════════════════════════════════════════════════════
     [ContextMenu("13. Spawn Timer Display")]
     public void SpawnTimerDisplay()
@@ -1102,16 +1102,17 @@ public class BucaSetupHelper : MonoBehaviour
         var rootGO = new GameObject("TimerDisplay", typeof(RectTransform));
         rootGO.transform.SetParent(gameHud.transform, false);
         var rrt = (RectTransform)rootGO.transform;
-        // Top-center, just below the level label
-        rrt.anchorMin = new Vector2(0.5f, 1f);
-        rrt.anchorMax = new Vector2(0.5f, 1f);
-        rrt.pivot = new Vector2(0.5f, 1f);
-        rrt.anchoredPosition = new Vector2(0f, -130f);
-        rrt.sizeDelta = new Vector2(500f, 70f);
+        // Match QuickRestartHint's exact centre x (-32 - 360/2 = -212)
+        // and sit directly beneath it. TimerDisplay reinforces this layout at
+        // runtime for older scenes as well.
+        rrt.anchorMin = new Vector2(1f, 1f);
+        rrt.anchorMax = new Vector2(1f, 1f);
+        rrt.pivot = new Vector2(0.5f, 0.5f);
+        rrt.anchoredPosition = new Vector2(-212f, -168f);
+        rrt.sizeDelta = new Vector2(96f, 96f);
 
-        // Timer text — shows seconds remaining, centered in the root.
-        // No fill bar — the text's scale + color animations carry the
-        // visual feedback on their own (see TimerDisplay).
+        // TimerDisplay builds the circular disc and radial ring around this
+        // centered number at runtime.
         var textGO = new GameObject("TimerText", typeof(RectTransform));
         textGO.transform.SetParent(rootGO.transform, false);
         var trt = (RectTransform)textGO.transform;
@@ -1121,7 +1122,7 @@ public class BucaSetupHelper : MonoBehaviour
         trt.offsetMax = Vector2.zero;
         var tmp = textGO.AddComponent<TextMeshProUGUI>();
         tmp.text = "30";
-        tmp.fontSize = 56;
+        tmp.fontSize = 46;
         tmp.fontStyle = FontStyles.Bold;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = new Color(1f, 1f, 1f, 0.95f);
@@ -1134,7 +1135,7 @@ public class BucaSetupHelper : MonoBehaviour
         td.timerText = tmp;
 
         levelManager.timerDisplay = td;
-        Debug.Log("[BucaSetupHelper] ✔ TimerDisplay (text-only) created and assigned to LevelManager.timerDisplay");
+        Debug.Log("[BucaSetupHelper] ✔ Circular TimerDisplay created and assigned to LevelManager.timerDisplay");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -1154,10 +1155,7 @@ public class BucaSetupHelper : MonoBehaviour
         // ─────────────────────────────────────────────────────
         // Sprites — built once, reused per element
         // ─────────────────────────────────────────────────────
-        var circleSprite  = BuildCircleSprite();
-        var glowSprite    = BuildSoftGlowSprite();
         var roundedRectSp = BuildRoundedRectSprite(28);
-        var thinStripeSp  = BuildVerticalGradientStripeSprite();
 
         // ─────────────────────────────────────────────────────
         // Root — full screen container with CanvasGroup for fade
@@ -1189,43 +1187,29 @@ public class BucaSetupHelper : MonoBehaviour
         crt.anchoredPosition = Vector2.zero;
         crt.sizeDelta = new Vector2(820f, 1180f);
 
-        // Glow halo BEHIND the card (large, soft circle that rotates)
-        var haloGO = new GameObject("GlowHalo", typeof(RectTransform));
-        haloGO.transform.SetParent(cardGO.transform, false);
-        var halort = (RectTransform)haloGO.transform;
-        halort.anchorMin = halort.anchorMax = halort.pivot = new Vector2(0.5f, 0.5f);
-        halort.anchoredPosition = Vector2.zero;
-        halort.sizeDelta = new Vector2(1300f, 1300f);
-        var halo = haloGO.AddComponent<Image>();
-        halo.sprite = glowSprite;
-        halo.color = new Color(0.95f, 0.45f, 0.85f, 0.18f);
-        halo.raycastTarget = false;
-
-        // Card background fill
+        // Card background fill — on-theme near-black (matches GameNeonTheme)
         var cardImg = cardGO.AddComponent<Image>();
         cardImg.sprite = roundedRectSp;
         cardImg.type = Image.Type.Sliced;
         cardImg.pixelsPerUnitMultiplier = 1.0f;
-        cardImg.color = new Color(0.07f, 0.04f, 0.16f, 0.97f);
+        cardImg.color = new Color(0.05f, 0.07f, 0.14f, 0.97f);
 
-        // Card border outline (slightly larger than card, pulses alpha)
+        // Static cyan border outline (no pulse — minimal look)
         var borderGO = new GameObject("BorderOutline", typeof(RectTransform));
         borderGO.transform.SetParent(cardGO.transform, false);
         var brt = (RectTransform)borderGO.transform;
         brt.anchorMin = new Vector2(0f, 0f);
         brt.anchorMax = new Vector2(1f, 1f);
         brt.pivot = new Vector2(0.5f, 0.5f);
-        brt.offsetMin = new Vector2(-6f, -6f);
-        brt.offsetMax = new Vector2( 6f,  6f);
+        brt.offsetMin = new Vector2(-4f, -4f);
+        brt.offsetMax = new Vector2( 4f,  4f);
         var border = borderGO.AddComponent<Image>();
         border.sprite = roundedRectSp;
         border.type = Image.Type.Sliced;
-        border.color = new Color(1f, 0.85f, 0.35f, 0.85f);
+        border.color = new Color(0.18f, 0.88f, 1f, 0.45f);
         border.raycastTarget = false;
         // Border is the OUTER box, render it first so card sits on top
         borderGO.transform.SetSiblingIndex(0);
-        // Halo even further behind
-        haloGO.transform.SetSiblingIndex(0);
 
         // ─────────────────────────────────────────────────────
         // Title bar
@@ -1236,23 +1220,8 @@ public class BucaSetupHelper : MonoBehaviour
         tbrt.anchorMin = new Vector2(0.5f, 1f); tbrt.anchorMax = new Vector2(0.5f, 1f); tbrt.pivot = new Vector2(0.5f, 1f);
         tbrt.anchoredPosition = new Vector2(0f, -30f);
         tbrt.sizeDelta = new Vector2(780f, 130f);
-        // Mask so the shimmer doesn't escape the title strip
-        var titleMask = titleBarGO.AddComponent<RectMask2D>();
 
-        // Shimmer streak — moves across the title via LeaderboardCardFX
-        var shimmerGO = new GameObject("Shimmer", typeof(RectTransform));
-        shimmerGO.transform.SetParent(titleBarGO.transform, false);
-        var shrt = (RectTransform)shimmerGO.transform;
-        shrt.anchorMin = shrt.anchorMax = shrt.pivot = new Vector2(0.5f, 0.5f);
-        shrt.anchoredPosition = Vector2.zero;
-        shrt.sizeDelta = new Vector2(160f, 130f);
-        shrt.localRotation = Quaternion.Euler(0f, 0f, 18f);
-        var shimmer = shimmerGO.AddComponent<Image>();
-        shimmer.sprite = thinStripeSp;
-        shimmer.color = new Color(1f, 1f, 1f, 0.18f);
-        shimmer.raycastTarget = false;
-
-        // Title text on top of the mask
+        // Title text — solid neon cyan (matches GameNeonTheme), no gradient/shimmer
         var titleGO = new GameObject("Title", typeof(RectTransform));
         titleGO.transform.SetParent(titleBarGO.transform, false);
         var trt = (RectTransform)titleGO.transform;
@@ -1260,19 +1229,24 @@ public class BucaSetupHelper : MonoBehaviour
         trt.anchoredPosition = Vector2.zero;
         trt.sizeDelta = new Vector2(780f, 130f);
         var title = titleGO.AddComponent<TextMeshProUGUI>();
-        title.text = "LEADERBOARD";
-        title.fontSize = 88;
+        title.text = "TOP 10 • POINTS";
+        title.fontSize = 82;
         title.fontStyle = FontStyles.Bold;
         title.alignment = TextAlignmentOptions.Center;
-        title.enableVertexGradient = true;
-        title.colorGradient = new VertexGradient(
-            new Color(1f, 0.92f, 0.35f),
-            new Color(1f, 0.55f, 0.85f),
-            new Color(0.35f, 0.85f, 1f),
-            new Color(1f, 0.85f, 0.35f));
-        title.outlineWidth = 0.24f;
-        title.outlineColor = new Color(0.10f, 0.02f, 0.18f, 1f);
+        title.characterSpacing = 6f;
+        title.color = new Color(0.18f, 0.88f, 1f, 1f);
         title.raycastTarget = false;
+
+        // Thin cyan divider under the title
+        var dividerGO = new GameObject("Divider", typeof(RectTransform));
+        dividerGO.transform.SetParent(cardGO.transform, false);
+        var dvrt = (RectTransform)dividerGO.transform;
+        dvrt.anchorMin = new Vector2(0.5f, 1f); dvrt.anchorMax = new Vector2(0.5f, 1f); dvrt.pivot = new Vector2(0.5f, 1f);
+        dvrt.anchoredPosition = new Vector2(0f, -170f);
+        dvrt.sizeDelta = new Vector2(700f, 3f);
+        var divider = dividerGO.AddComponent<Image>();
+        divider.color = new Color(0.18f, 0.88f, 1f, 0.85f);
+        divider.raycastTarget = false;
 
         // Subtitle — your-rank line directly below title
         var myRankGO = new GameObject("MyRank", typeof(RectTransform));
@@ -1282,14 +1256,15 @@ public class BucaSetupHelper : MonoBehaviour
         mrrt.anchoredPosition = new Vector2(0f, -180f);
         mrrt.sizeDelta = new Vector2(780f, 56f);
         var myRank = myRankGO.AddComponent<TextMeshProUGUI>();
-        myRank.text = "YOUR RANK  #0   SCORE  0";
+        myRank.text = "YOUR RANK  #0   POINTS  0";
         myRank.fontSize = 38;
         myRank.fontStyle = FontStyles.Bold;
         myRank.alignment = TextAlignmentOptions.Center;
-        myRank.color = new Color(1f, 0.9f, 0.35f, 0.95f);
+        myRank.color = new Color(0.64f, 0.90f, 1f, 0.95f);
         myRank.raycastTarget = false;
 
-        // Header strip: RANK  PLAYER  SCORE
+        // Header strip: RANK  PLAYER  POINTS. Golf strokes/to-par are shown
+        // separately because Luxodd's leaderboard payload exposes points only.
         BuildHeaderStrip(cardGO.transform);
 
         // ─────────────────────────────────────────────────────
@@ -1309,8 +1284,7 @@ public class BucaSetupHelper : MonoBehaviour
         for (int i = 0; i < n; i++)
         {
             rows[i] = BuildLeaderboardRow(rowsContainerGO.transform, i,
-                                          rowHeight, rowGap,
-                                          circleSprite, roundedRectSp);
+                                          rowHeight, rowGap, roundedRectSp);
         }
 
         // ─────────────────────────────────────────────────────
@@ -1327,7 +1301,7 @@ public class BucaSetupHelper : MonoBehaviour
         hintTmp.fontSize = 34;
         hintTmp.fontStyle = FontStyles.Bold;
         hintTmp.alignment = TextAlignmentOptions.Center;
-        hintTmp.color = new Color(1f, 1f, 1f, 0f);
+        hintTmp.color = new Color(0.64f, 0.90f, 1f, 0f);
         hintTmp.raycastTarget = false;
 
         // ─────────────────────────────────────────────────────
@@ -1340,11 +1314,8 @@ public class BucaSetupHelper : MonoBehaviour
         panel.myRankText = myRank;
         panel.continueHintText = hintTmp;
         panel.rows = rows;
-
-        var fx = cardGO.AddComponent<LeaderboardCardFX>();
-        fx.glowHalo = halort;
-        fx.titleShimmer = shrt;
-        fx.borderOutline = border;
+        panel.normalRowColor = new Color(0.64f, 0.90f, 1f, 1f);   // neon cyan-soft
+        panel.myRowColor     = new Color(1f, 0.18f, 0.53f, 1f);   // hot pink #FF2E88 (matches PLAY button)
 
         // ─── Wire to LuxoddGameBridge ─────────────────────────
         var bridge = FindFirstObjectByType<LuxoddGameBridge>();
@@ -1360,11 +1331,11 @@ public class BucaSetupHelper : MonoBehaviour
         }
 
         rootGO.SetActive(false);
-        Debug.Log("[BucaSetupHelper] ✔ LeaderboardPanel created with " + n + " rows + animated FX.");
+        Debug.Log("[BucaSetupHelper] ✔ LeaderboardPanel created with " + n + " rows (neon minimal).");
     }
 
     // ─────────────────────────────────────────────────────────
-    // Header strip ("RANK   PLAYER   SCORE")
+    // Header strip ("RANK   PLAYER   POINTS")
     // ─────────────────────────────────────────────────────────
     static void BuildHeaderStrip(Transform parent)
     {
@@ -1377,7 +1348,7 @@ public class BucaSetupHelper : MonoBehaviour
 
         AddHeaderLabel(headerGO.transform, "RANK",   new Vector2(-330f, 0f), 60f);
         AddHeaderLabel(headerGO.transform, "PLAYER", new Vector2( -90f, 0f), 320f);
-        AddHeaderLabel(headerGO.transform, "SCORE",  new Vector2( 290f, 0f), 180f);
+        AddHeaderLabel(headerGO.transform, "POINTS", new Vector2( 290f, 0f), 180f);
     }
 
     static void AddHeaderLabel(Transform parent, string text, Vector2 pos, float width)
@@ -1393,7 +1364,7 @@ public class BucaSetupHelper : MonoBehaviour
         t.fontSize = 24;
         t.fontStyle = FontStyles.Bold;
         t.alignment = TextAlignmentOptions.Center;
-        t.color = new Color(0.8f, 0.7f, 1f, 0.55f);
+        t.color = new Color(0.64f, 0.90f, 1f, 0.55f);
         t.characterSpacing = 4f;
         t.raycastTarget = false;
     }
@@ -1403,7 +1374,7 @@ public class BucaSetupHelper : MonoBehaviour
     // ─────────────────────────────────────────────────────────
     static LeaderboardRow BuildLeaderboardRow(Transform parent, int index,
                                               float rowHeight, float rowGap,
-                                              Sprite circleSprite, Sprite roundedRectSp)
+                                              Sprite roundedRectSp)
     {
         var rowGO = new GameObject($"Row_{index + 1}", typeof(RectTransform));
         rowGO.transform.SetParent(parent, false);
@@ -1424,19 +1395,7 @@ public class BucaSetupHelper : MonoBehaviour
         rowBg.color = new Color(0f, 0f, 0f, 0f);
         rowBg.raycastTarget = false;
 
-        // Rank badge (circle)
-        var badgeGO = new GameObject("RankBadge", typeof(RectTransform));
-        badgeGO.transform.SetParent(rowGO.transform, false);
-        var bdrt = (RectTransform)badgeGO.transform;
-        bdrt.anchorMin = bdrt.anchorMax = bdrt.pivot = new Vector2(0f, 0.5f);
-        bdrt.anchoredPosition = new Vector2(50f, 0f);
-        bdrt.sizeDelta = new Vector2(48f, 48f);
-        var badge = badgeGO.AddComponent<Image>();
-        badge.sprite = circleSprite;
-        badge.color = new Color(0.30f, 0.22f, 0.45f, 0f);
-        badge.raycastTarget = false;
-
-        // Rank text (sits on top of badge)
+        // Rank text (left of the name — no medal badge in the minimal layout)
         var rankGO = new GameObject("RankText", typeof(RectTransform));
         rankGO.transform.SetParent(rowGO.transform, false);
         var rkrt = (RectTransform)rankGO.transform;
@@ -1487,7 +1446,7 @@ public class BucaSetupHelper : MonoBehaviour
 
         var rowComp = rowGO.AddComponent<LeaderboardRow>();
         rowComp.rectTransform = rrt;
-        rowComp.rankBadge = badge;
+        rowComp.rankBadge = null;
         rowComp.rankText = rankTmp;
         rowComp.nameText = nameTmp;
         rowComp.scoreText = scoreTmp;
@@ -1662,11 +1621,11 @@ public class BucaSetupHelper : MonoBehaviour
     public enum ControlIcon { JoystickStick, BlackButton, RedButton, GreenButton, YellowButton, BlueButton, PurpleButton, WhiteButton }
 
     [Header("Control hints (bottom of HUD)")]
-    [Tooltip("Hints shown in the control bar. Default = joystick AIM + Black LAUNCH.")]
+    [Tooltip("Hints shown in the control bar. Default = joystick AIM + Black CHARGE / FIRE.")]
     public HintItemConfig[] controlHints = new HintItemConfig[]
     {
         new HintItemConfig { icon = ControlIcon.JoystickStick, label = "AIM" },
-        new HintItemConfig { icon = ControlIcon.BlackButton,   label = "LAUNCH" },
+        new HintItemConfig { icon = ControlIcon.BlackButton,   label = "BLACK: CHARGE / FIRE" },
     };
     [Tooltip("Hide the bar permanently after this many shots. 0 = always visible.")]
     public int hintHideAfterShots = 3;
@@ -1724,7 +1683,7 @@ public class BucaSetupHelper : MonoBehaviour
             controlHints = new HintItemConfig[]
             {
                 new HintItemConfig { icon = ControlIcon.JoystickStick, label = "AIM" },
-                new HintItemConfig { icon = ControlIcon.BlackButton,   label = "LAUNCH" },
+                new HintItemConfig { icon = ControlIcon.BlackButton,   label = "BLACK: CHARGE / FIRE" },
             };
         }
 

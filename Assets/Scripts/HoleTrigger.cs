@@ -13,7 +13,8 @@ public class HoleTrigger : MonoBehaviour
     void OnTriggerEnter(Collider other)
     {
         if (_triggered) return;
-        if (other.attachedRigidbody == null) return;
+        var rb = other.attachedRigidbody;
+        if (rb == null || rb.GetComponent<PuckController>() == null) return;
         if (LevelManager.Instance == null) return;
 
         _triggered = true;

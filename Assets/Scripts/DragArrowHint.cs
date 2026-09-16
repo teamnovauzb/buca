@@ -40,7 +40,7 @@ public class DragArrowHint : MonoBehaviour
     {
         if (arrow == null || arrowGraphic == null) return;
 
-        _t += Time.deltaTime / loopDuration;
+        _t += Time.deltaTime / Mathf.Max(0.01f, loopDuration);
         if (_t > 1f) _t -= 1f;
 
         // Slide from top (0) to bottom (1), fading in then out

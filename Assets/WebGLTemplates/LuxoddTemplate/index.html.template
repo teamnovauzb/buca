@@ -12,8 +12,10 @@
   function LuxoddApplyVisualViewportSize() {
     const vv = window.visualViewport;
 
-    const cssW = Math.floor(vv ? vv.width : window.innerWidth);
-    const cssH = Math.floor(vv ? vv.height : window.innerHeight);
+    // Round outward so fractional visual-viewport pixels cannot leave a thin
+    // uncovered strip on high-DPI or zoomed displays.
+    const cssW = Math.max(1, Math.ceil(vv ? vv.width : window.innerWidth));
+    const cssH = Math.max(1, Math.ceil(vv ? vv.height : window.innerHeight));
 
     const offX = Math.floor(vv ? vv.offsetLeft : 0);
     const offY = Math.floor(vv ? vv.offsetTop : 0);
@@ -24,6 +26,8 @@
 
     container.style.left = offX + "px";
     container.style.top = offY + "px";
+    container.style.right = "auto";
+    container.style.bottom = "auto";
     container.style.width = cssW + "px";
     container.style.height = cssH + "px";
 
@@ -31,8 +35,8 @@
     canvas.style.height = cssH + "px";
 
     const dpr = window.devicePixelRatio || 1;
-    const pxW = Math.floor(cssW * dpr);
-    const pxH = Math.floor(cssH * dpr);
+    const pxW = Math.ceil(cssW * dpr);
+    const pxH = Math.ceil(cssH * dpr);
 
     if (canvas.width !== pxW) canvas.width = pxW;
     if (canvas.height !== pxH) canvas.height = pxH;
@@ -84,28 +88,32 @@
       <div id="unity-warning"> </div>
     </div>
 
-	
-	<script>
-    const currentVersion = {{{ JSON.stringify(PRODUCT_VERSION) }}};
-    const sessionKey = 'reloaded';
-
-    if (!sessionStorage.getItem(sessionKey)) {
-        sessionStorage.setItem(sessionKey, true);
-        window.location.reload(true);
-		//window.location.href = window.location.pathname + '?v=' + currentVersion
-    }
-</script>
-
 <script>
   const pluginVersion = "{{PLUGIN_VERSION}}";
 </script>
 	
     <script>
-      window.addEventListener("load", function () {
-        if ("serviceWorker" in navigator) {
-          navigator.serviceWorker.register("ServiceWorker.js");
+      // Older builds installed a permanent cache-first service worker. Its
+      // cache name did not change between uploads, so Luxodd could keep
+      // serving an obsolete build. Clear only this game's legacy caches and
+      // do not install another service worker inside the arcade embed.
+      async function LuxoddClearLegacyBuildCaches() {
+        if (!("caches" in window)) return;
+
+        try {
+          const cacheNames = await caches.keys();
+          const legacyPrefix = "DefaultCompany-RealBuca-";
+          await Promise.all(
+            cacheNames
+              .filter((name) => name.startsWith(legacyPrefix))
+              .map((name) => caches.delete(name))
+          );
+        } catch (error) {
+          console.warn("[Luxodd] Could not clear a legacy WebGL cache.", error);
         }
-      });
+      }
+
+      LuxoddClearLegacyBuildCaches();
 
       var container = document.querySelector("#unity-container");
       var canvas = document.querySelector("#unity-canvas");
@@ -125,7 +133,7 @@
           warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
         }
         var div = document.createElement('div');
-        div.innerHTML = msg;
+        div.textContent = msg;
         warningBanner.appendChild(div);
         if (type == 'error') div.style = 'background: red; padding: 10px;';
         else {
@@ -187,8 +195,15 @@
 		  LuxoddForceApplyViewportAfterUnityStart();
           loadingBar.style.display = "none";
         }).catch((message) => {
-          alert(message);
+          console.error("[Luxodd] Unity failed to start.", message);
+          loadingBar.style.display = "none";
+          unityShowBanner("The game could not start. Please reload the page.", "error");
         });
+      };
+      script.onerror = () => {
+        console.error("[Luxodd] Unity loader could not be downloaded:", loaderUrl);
+        loadingBar.style.display = "none";
+        unityShowBanner("The game files could not be loaded. Please reload the page.", "error");
       };
       document.body.appendChild(script);
     </script>

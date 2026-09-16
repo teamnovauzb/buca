@@ -140,7 +140,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.05, z: 5.4}
-  m_LocalScale: {x: 0.7818103, y: 0.04, z: 0.7818103}
+  m_LocalScale: {x: 0.7974451, y: 0.04, z: 0.7974451}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 179064188108841061}
@@ -1517,6 +1517,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 179064188108841061}
+  - component: {fileID: 7780791197792433172}
   m_Layer: 0
   m_Name: Level_27
   m_TagString: Untagged
@@ -1564,6 +1565,24 @@ Transform:
   - {fileID: 4125750828397854533}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7780791197792433172
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3900290799114935996}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ecb669e9594e44aad80fff25de3f5283, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDifficultyProfile
+  balanceVersion: 2
+  levelNumber: 27
+  chapter: 5
+  difficultyRating: 5
+  difficultyIndex: 27
+  mechanicHint: 'Twin windmills: cross a large sweeping obstacle safely.'
 --- !u!1 &4195956489958938601
 GameObject:
   m_ObjectHideFlags: 0
@@ -2045,7 +2064,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c5910c4357c934d66b375988b07223a3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::IcePatch
-  patchDamping: 6.5
+  patchDamping: 6.6896553
   restoreDamping: 0.9
 --- !u!1 &5555310073501569582
 GameObject:
@@ -2590,7 +2609,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6eb157fc9db48404fb9aba74dcd67224, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RotatingWall
-  speedDegPerSec: 52
+  speedDegPerSec: 85.86207
   phaseDeg: 0
 --- !u!114 &2050750229920682433
 MonoBehaviour:
@@ -2640,7 +2659,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.06, z: 5.4}
-  m_LocalScale: {x: 0.5785396, y: 0.05, z: 0.5785396}
+  m_LocalScale: {x: 0.5901094, y: 0.05, z: 0.5901094}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 179064188108841061}
@@ -2721,7 +2740,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.34133837
+  m_Radius: 0.34816453
   m_Center: {x: 0.000000059604645, y: 0, z: -0.00000008940697}
 --- !u!114 &8165297757243757433
 MonoBehaviour:

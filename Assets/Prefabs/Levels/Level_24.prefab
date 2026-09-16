@@ -1111,7 +1111,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.05, z: 5.4}
-  m_LocalScale: {x: 0.8286207, y: 0.04, z: 0.8286207}
+  m_LocalScale: {x: 0.8351073, y: 0.04, z: 0.8351073}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 9073643481384601043}
@@ -1505,7 +1505,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: b203db769cf9d2b40bb1a1c3111003b8, type: 2}
+  - {fileID: 2100000, guid: 4419fd6428823d24da70860acff34570, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -2109,6 +2109,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 9073643481384601043}
+  - component: {fileID: 2736385237193905805}
   m_Layer: 0
   m_Name: Level_24
   m_TagString: Untagged
@@ -2158,6 +2159,24 @@ Transform:
   - {fileID: 6958004096725153693}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2736385237193905805
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6206841932168486185}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ecb669e9594e44aad80fff25de3f5283, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDifficultyProfile
+  balanceVersion: 2
+  levelNumber: 24
+  chapter: 4
+  difficultyRating: 4
+  difficultyIndex: 24
+  mechanicHint: 'Deadly corridor: weave through a dangerous diamond.'
 --- !u!1 &6471327163949686375
 GameObject:
   m_ObjectHideFlags: 0
@@ -2650,7 +2669,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.06, z: 5.4}
-  m_LocalScale: {x: 0.6131793, y: 0.05, z: 0.6131793}
+  m_LocalScale: {x: 0.6179794, y: 0.05, z: 0.6179794}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 9073643481384601043}
@@ -2731,7 +2750,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.3617758
+  m_Radius: 0.36460784
   m_Center: {x: 0.000000059604645, y: 0, z: -0.00000008940697}
 --- !u!114 &7749755962479791866
 MonoBehaviour:

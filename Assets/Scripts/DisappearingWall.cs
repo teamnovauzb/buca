@@ -40,7 +40,10 @@ public class DisappearingWall : MonoBehaviour
 
     void Update()
     {
-        float cycle = onDuration + offDuration + fadeDuration * 2f;
+        float on = Mathf.Max(0f, onDuration);
+        float off = Mathf.Max(0f, offDuration);
+        float fade = Mathf.Max(0.01f, fadeDuration);
+        float cycle = Mathf.Max(0.01f, on + off + fade * 2f);
         float t = Mathf.Repeat(Time.time + phase, cycle);
 
         // Phase layout per cycle:
@@ -48,13 +51,13 @@ public class DisappearingWall : MonoBehaviour
         //   [onDuration .. onDuration+fadeDuration]           → fading out
         //   [onDuration+fadeDuration .. onDuration+fadeDuration+offDuration] → gone
         //   [...end]                                          → fading in
-        float fadeInStart = onDuration + fadeDuration + offDuration;
+        float fadeInStart = on + fade + off;
         bool solid;
         float alpha;
-        if (t < onDuration)                         { solid = true;  alpha = 1f; }
-        else if (t < onDuration + fadeDuration)     { solid = false; alpha = 1f - (t - onDuration) / fadeDuration; }
+        if (t < on)                                 { solid = true;  alpha = 1f; }
+        else if (t < on + fade)                     { solid = false; alpha = 1f - (t - on) / fade; }
         else if (t < fadeInStart)                   { solid = false; alpha = 0f; }
-        else                                        { solid = true;  alpha = (t - fadeInStart) / fadeDuration; }
+        else                                        { solid = true;  alpha = (t - fadeInStart) / fade; }
 
         // Audio: detect solid↔gone transitions and play vanish/reappear.
         // Skip the first frame to avoid a spurious SFX when the wall happens

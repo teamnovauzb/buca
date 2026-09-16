@@ -6,7 +6,7 @@ using System.Collections;
 
 /// <summary>
 /// Celebratory end-of-game panel shown when the last level is sunk.
-/// Fades in with a scale-bounce, shows total strokes + total stars,
+/// Fades in with a scale-bounce, shows the final golf score + total stars,
 /// and exposes Replay (restart from level 1) + Main Menu buttons.
 ///
 /// The whole panel is disabled by default and shown only via Show().
@@ -35,7 +35,13 @@ public class GameCompletePanel : MonoBehaviour
         if (mainMenuButton != null) mainMenuButton.onClick.AddListener(GoMainMenu);
     }
 
+    /// <summary>Legacy overload retained for older scene/event bindings.</summary>
     public void Show(int totalStrokes, int totalStars, int maxStars)
+    {
+        Show(totalStrokes, 0, totalStars, maxStars);
+    }
+
+    public void Show(int totalStrokes, int totalPar, int totalStars, int maxStars)
     {
         // Activate first — Unity can't run coroutines on inactive objects.
         gameObject.SetActive(true);
@@ -45,7 +51,35 @@ public class GameCompletePanel : MonoBehaviour
         if (card != null) card.localScale = Vector3.zero;
 
         if (statsText != null)
-            statsText.text = $"TOTAL STROKES  {totalStrokes}\nSTARS  {totalStars} / {maxStars}";
+        {
+            // Four concise golf rows need more vertical room than the legacy
+            // two-line summary. Normalize old generated scenes at runtime.
+            statsText.rectTransform.anchoredPosition = Vector2.zero;
+            statsText.rectTransform.sizeDelta = new Vector2(760f, 280f);
+            statsText.fontSize = 48f;
+            statsText.alignment = TextAlignmentOptions.Center;
+            if (totalPar > 0)
+            {
+                int toPar = totalStrokes - totalPar;
+                string golfScore = LevelManager.FormatToPar(toPar);
+                string relation = toPar == 0
+                    ? "EVEN PAR"
+                    : toPar < 0
+                        ? $"{Mathf.Abs(toPar)} UNDER PAR"
+                        : $"{toPar} OVER PAR";
+                string resultColor = toPar <= 0 ? "#FFD84D" : "#FF4D72";
+                statsText.text =
+                    $"<color=#75EDFF>FINAL GOLF SCORE</color>  " +
+                    $"<color={resultColor}>{golfScore}</color>\n" +
+                    $"<color=#DDF7FF>TOTAL STROKES  {totalStrokes}   •   COURSE PAR  {totalPar}</color>\n" +
+                    $"<color={resultColor}>{relation}</color>\n" +
+                    $"<color=#75EDFF>PUCK RATING  {totalStars} / {maxStars}</color>";
+            }
+            else
+            {
+                statsText.text = $"TOTAL STROKES  {totalStrokes}\nPUCK RATING  {totalStars} / {maxStars}";
+            }
+        }
         StartCoroutine(ShowRoutine());
     }
 

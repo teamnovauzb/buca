@@ -9,6 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7887758472638546789}
+  - component: {fileID: 6631280006240718652}
   m_Layer: 0
   m_Name: Level_26
   m_TagString: Untagged
@@ -58,6 +59,24 @@ Transform:
   - {fileID: 7650974893203927901}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6631280006240718652
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 276776707449634899}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ecb669e9594e44aad80fff25de3f5283, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDifficultyProfile
+  balanceVersion: 2
+  levelNumber: 26
+  chapter: 5
+  difficultyRating: 5
+  difficultyIndex: 26
+  mechanicHint: 'Pinball: manage launch, spinners, and rebound angles.'
 --- !u!1 &369009389975340744
 GameObject:
   m_ObjectHideFlags: 0
@@ -88,7 +107,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.06, z: 5.4}
-  m_LocalScale: {x: 0.59378624, y: 0.05, z: 0.59378624}
+  m_LocalScale: {x: 0.59938055, y: 0.05, z: 0.59938055}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7887758472638546789}
@@ -169,7 +188,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.35033387
+  m_Radius: 0.3536345
   m_Center: {x: 0.00000005960464, y: 0, z: -0.00000008940696}
 --- !u!114 &8252140702816084758
 MonoBehaviour:
@@ -339,7 +358,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6eb157fc9db48404fb9aba74dcd67224, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RotatingWall
-  speedDegPerSec: 90
+  speedDegPerSec: 84.48276
   phaseDeg: 0
 --- !u!114 &271937997815401399
 MonoBehaviour:
@@ -1848,7 +1867,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6eb157fc9db48404fb9aba74dcd67224, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RotatingWall
-  speedDegPerSec: -90
+  speedDegPerSec: -90.48276
   phaseDeg: 0
 --- !u!114 &5370309139847127510
 MonoBehaviour:
@@ -1896,7 +1915,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.05, z: 5.4}
-  m_LocalScale: {x: 0.8024138, y: 0.04, z: 0.8024138}
+  m_LocalScale: {x: 0.8099737, y: 0.04, z: 0.8099737}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7887758472638546789}
@@ -2710,8 +2729,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6c9b7f4f35f6d4ae5b8a369ce9ef2900, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KickerBumper
-  kickSpeed: 10
-  restitutionGain: 1.15
+  kickSpeed: 11.586206
+  restitutionGain: 1.1793103
   maxSpeed: 14
 --- !u!1 &6789638782452215520
 GameObject:

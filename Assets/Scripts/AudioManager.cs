@@ -67,6 +67,7 @@ public class AudioManager : MonoBehaviour
     [Tooltip("3 clips for 1/2/3-star reveal. Plays in sequence per star.")]
     public AudioClip[] starRevealSfx;
     public AudioClip timerLowTickSfx;       // each second of the last 5
+    readonly AudioClip[] _timerCountdownVoice = new AudioClip[6];
 
     // ─────────────────────────────────────────────────────────
     // Mechanic SFX
@@ -113,7 +114,7 @@ public class AudioManager : MonoBehaviour
 
     [Header("Volumes (0..1)")]
     [Range(0f, 1f)] public float masterVolume = 1f;
-    [Range(0f, 1f)] public float musicVolume = 0.7f;
+    [Range(0f, 1f)] public float musicVolume = 0.42f;
     [Range(0f, 1f)] public float sfxVolume   = 1f;
     [Range(0f, 1f)] public float ambientVolume = 0.6f;
 
@@ -121,6 +122,16 @@ public class AudioManager : MonoBehaviour
     [Tooltip("Number of pooled SFX AudioSources — sets the max number of overlapping one-shots.")]
     public int sfxPoolSize = 10;
     public float musicCrossfadeDuration = 1.5f;
+
+    [Header("Background music")]
+    [Tooltip("Plays the futuristic menu/gameplay soundtrack. This is independent from the " +
+             "mechanic hum loops, so music can stay on without the disturbing machine sound.")]
+    public bool backgroundMusicEnabled = true;
+
+    [Header("Continuous mechanic audio")]
+    [Tooltip("Keep OFF for the arcade build. This disables magnet, wind and gravity hum loops " +
+             "while leaving background music and one-shot gameplay sounds available.")]
+    public bool continuousBackgroundAudioEnabled = false;
 
     // ─────────────────────────────────────────────────────────
     // Internals
@@ -149,6 +160,8 @@ public class AudioManager : MonoBehaviour
 
         LoadVolumes();
         BuildAudioSources();
+        if (!continuousBackgroundAudioEnabled)
+            StopContinuousBackgroundAudioImmediate();
 
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
@@ -294,6 +307,13 @@ public class AudioManager : MonoBehaviour
     void DriveLoop(AudioSource src, AudioClip clip, bool active, float targetStrength)
     {
         if (src == null) return;
+        if (!continuousBackgroundAudioEnabled)
+        {
+            src.Stop();
+            src.clip = null;
+            src.volume = 0f;
+            return;
+        }
         if (clip == null)
         {
             if (src.isPlaying) src.Stop();
@@ -318,6 +338,11 @@ public class AudioManager : MonoBehaviour
     // ═══════════════════════════════════════════════════════════
     public void PlayMusic(AudioClip clip, float fadeSeconds = -1f)
     {
+        if (!backgroundMusicEnabled)
+        {
+            StopContinuousBackgroundAudioImmediate();
+            return;
+        }
         if (clip == null) { StopMusic(fadeSeconds); return; }
         if (_activeMusic == null) return;
         if (_activeMusic.clip == clip && _activeMusic.isPlaying) return;
@@ -389,6 +414,7 @@ public class AudioManager : MonoBehaviour
     /// </summary>
     public void NotifyTimerRemaining(float seconds, bool timerActive)
     {
+        if (!backgroundMusicEnabled) return;
         if (!timerActive || tenseGameplayMusic == null || gameplayMusic == null) return;
         // Hysteresis: enter tense at <= threshold, exit only after seconds rises
         // back above threshold + 1.5s. Prevents flapping between tracks if the
@@ -414,6 +440,11 @@ public class AudioManager : MonoBehaviour
     {
         _initialSceneHandled = true;
         _tenseModeActive = false;
+        if (!backgroundMusicEnabled)
+        {
+            StopContinuousBackgroundAudioImmediate();
+            return;
+        }
         string n = scene.name == null ? "" : scene.name.ToLowerInvariant();
         if (n.Contains("menu"))
         {
@@ -423,6 +454,29 @@ public class AudioManager : MonoBehaviour
         {
             if (gameplayMusic != null) PlayMusic(gameplayMusic);
         }
+    }
+
+    /// <summary>
+    /// Hard-stop every continuous source. This is immediate (no fade/coroutine)
+    /// so a persisted AudioManager cannot leak a machine hum into the next scene.
+    /// One-shot SFX pool sources are intentionally untouched.
+    /// </summary>
+    void StopContinuousBackgroundAudioImmediate()
+    {
+        StopMusicCoroutine();
+        StopLoopSourceImmediate(_musicA);
+        StopLoopSourceImmediate(_musicB);
+        StopLoopSourceImmediate(_magnetLoop);
+        StopLoopSourceImmediate(_windLoop);
+        StopLoopSourceImmediate(_gravityLoop);
+    }
+
+    static void StopLoopSourceImmediate(AudioSource src)
+    {
+        if (src == null) return;
+        src.Stop();
+        src.clip = null;
+        src.volume = 0f;
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -469,6 +523,33 @@ public class AudioManager : MonoBehaviour
     public void PlayScoreTick()   => PlaySfx(scoreCountTickSfx, 0.4f, Random.Range(0.95f, 1.05f));
     public void PlayCountdownTick() => PlaySfx(countdownTickSfx);
     public void PlayCountdownAlarm() => PlaySfx(countdownAlarmSfx);
+
+    /// <summary>
+    /// Speaks the last five timer numbers without displaying a voice icon.
+    /// Clips live in Resources so old scenes need no new Inspector references;
+    /// the existing warning tick remains a safe fallback if a clip is missing.
+    /// </summary>
+    public void PlayTimerCountdownVoice(int seconds)
+    {
+        if (seconds < 1 || seconds > 5) return;
+
+        AudioClip voice = _timerCountdownVoice[seconds];
+        if (voice == null)
+        {
+            voice = Resources.Load<AudioClip>($"Audio/TimerCountdown/{seconds}");
+            _timerCountdownVoice[seconds] = voice;
+        }
+
+        if (voice != null)
+        {
+            PlaySfx(timerLowTickSfx, 0.28f, 1.04f);
+            PlaySfx(voice, 1f);
+        }
+        else
+        {
+            PlaySfx(timerLowTickSfx);
+        }
+    }
 
 #if UNITY_EDITOR
     // ═══════════════════════════════════════════════════════════

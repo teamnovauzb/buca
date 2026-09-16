@@ -1,10 +1,23 @@
 mergeInto(LibraryManager.library, {
  
     GetURLFromQueryStr: function () {
-        var queryStr = window.location.search; // only query string
-        var bufferSize = lengthBytesUTF8(queryStr) + 1;
+        // Luxodd loads the WebGL document from a blob: URL. The blob URL has
+        // no token query string, so read the real launch URL from the parent
+        // page (or referrer when cross-origin access is unavailable).
+        var launchUrl = window.location.href;
+        try {
+            if (window.parent && window.parent !== window && window.parent.location.href) {
+                launchUrl = window.parent.location.href;
+            }
+        } catch (error) {
+            if (document.referrer) {
+                launchUrl = document.referrer;
+            }
+        }
+
+        var bufferSize = lengthBytesUTF8(launchUrl) + 1;
         var buffer = _malloc(bufferSize);
-        stringToUTF8(queryStr, buffer, bufferSize);
+        stringToUTF8(launchUrl, buffer, bufferSize);
         return buffer;
     },
 	

@@ -1683,6 +1683,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5775029517262552171}
+  - component: {fileID: 8196733152039807483}
   m_Layer: 0
   m_Name: Level_06
   m_TagString: Untagged
@@ -1728,6 +1729,24 @@ Transform:
   - {fileID: 3378125560165920990}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &8196733152039807483
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5001273930881750098}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ecb669e9594e44aad80fff25de3f5283, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDifficultyProfile
+  balanceVersion: 2
+  levelNumber: 6
+  chapter: 1
+  difficultyRating: 1
+  difficultyIndex: 6
+  mechanicHint: 'Double bank: plan two rebounds before shooting.'
 --- !u!1 &6091197100683867251
 GameObject:
   m_ObjectHideFlags: 0
@@ -2081,7 +2100,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 3, y: 0.06, z: 5.3}
-  m_LocalScale: {x: 0.8191673, y: 0.05, z: 0.8191673}
+  m_LocalScale: {x: 0.79066306, y: 0.05, z: 0.79066306}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 5775029517262552171}
@@ -2162,7 +2181,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.4833087
+  m_Radius: 0.4664912
   m_Center: {x: 0.00000005960464, y: 0, z: -0.00000008940696}
 --- !u!114 &2756894926773979493
 MonoBehaviour:
@@ -2513,7 +2532,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 3, y: 0.05, z: 5.3}
-  m_LocalScale: {x: 1.1069828, y: 0.04, z: 1.1069828}
+  m_LocalScale: {x: 1.0684636, y: 0.04, z: 1.0684636}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 5775029517262552171}

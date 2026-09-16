@@ -36,6 +36,23 @@ namespace Luxodd.Game.Scripts.Network
             _onConnectedToServerCallback = onConnectedToServerCallback;
             _onConnectToServerErrorCallback = onConnectToServerErrorCallback;
 
+            if (_coroutine != null)
+            {
+                StopCoroutine(_coroutine);
+                _coroutine = null;
+            }
+
+            // The host may dispatch luxodd:session while Unity is still
+            // finishing startup. Recover the payload cached by JavaScript
+            // before starting the timeout/fallback path.
+            _sessionBridge.RefreshFromJsState();
+            _sessionPayload = _sessionBridge.SessionPayload;
+            if (_sessionPayload != null)
+            {
+                CheckPayloadAndConnectToServer();
+                return;
+            }
+
             _coroutine = StartCoroutine(StartListenEventProcess());
         }
 
@@ -45,6 +62,7 @@ namespace Luxodd.Game.Scripts.Network
             if (_coroutine != null)
             {
                 StopCoroutine(_coroutine);
+                _coroutine = null;
             }
             
             CheckPayloadAndConnectToServer();

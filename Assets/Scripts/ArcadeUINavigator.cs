@@ -44,6 +44,8 @@ public class ArcadeUINavigator : MonoBehaviour
     // LEVELS). Edge detection requires the player to release between moves.
     bool _vertWasUp;
     bool _vertWasDown;
+    bool _levelSelectWasOpen;   // true on frames the submenu overlay was up
+    MainMenuController _mainMenu;
 
     void OnEnable()
     {
@@ -88,6 +90,7 @@ public class ArcadeUINavigator : MonoBehaviour
         {
             if (b == null) continue;
             if (b.GetComponentInParent<LevelSelectController>() != null) continue;
+            if (IsInsideReturnPlayerPrompt(b.transform)) continue;
             fresh.Add(b);
         }
         // Sort top-to-bottom by world-space Y so up/down navigation feels right
@@ -117,6 +120,17 @@ public class ArcadeUINavigator : MonoBehaviour
 
     void Update()
     {
+        // The return-player dialog owns navigation while it is visible. This
+        // also prevents the Black press that confirms CONTINUE from firing the
+        // PLAY button underneath it on the same frame.
+        if (_mainMenu == null)
+            _mainMenu = FindFirstObjectByType<MainMenuController>(FindObjectsInactive.Include);
+        if (_mainMenu != null && _mainMenu.ResumePromptOpen)
+        {
+            if (_outlineGO != null && _outlineGO.activeSelf) _outlineGO.SetActive(false);
+            return;
+        }
+
         if (selectables == null || selectables.Length == 0) return;
 
         // Stand down entirely while the Level-Select panel is open. The panel
@@ -131,7 +145,19 @@ public class ArcadeUINavigator : MonoBehaviour
         {
             // Clear our highlight so it doesn't linger behind the panel.
             if (_outlineGO != null && _outlineGO.activeSelf) _outlineGO.SetActive(false);
+            _levelSelectWasOpen = true;
             return;
+        }
+
+        // The panel was open last frame and has now closed. While it was open it
+        // pointed the EventSystem's selection at one of its OWN tiles; that stale
+        // selection would make the confirm gate below reject the next press until
+        // the player moves focus. Re-assert our focus onto the EventSystem so the
+        // SAME menu item (e.g. LEVELS) can be confirmed again immediately on return.
+        if (_levelSelectWasOpen)
+        {
+            _levelSelectWasOpen = false;
+            HighlightCurrent();
         }
 
         // STEP 1 (was previously SyncIndexFromEventSystem) — moved BELOW
@@ -174,19 +200,27 @@ public class ArcadeUINavigator : MonoBehaviour
         {
             var current = selectables[_currentIndex];
             var sel = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
-            // Sanity gate: only invoke when EventSystem selection truly matches our index,
-            // OR the EventSystem has no selection yet (cold-start case).
-            if (current != null && (sel == null || sel == current.gameObject))
+            // Only BLOCK when the EventSystem is focused on a DIFFERENT button we
+            // manage — a genuine mouse-vs-gamepad divergence. If the selection is
+            // null, already us, or points at something OUTSIDE our list (e.g. a
+            // stale Level-Select tile left over after pressing Back), trust our own
+            // nav index: re-assert the selection and fire. This is what lets the
+            // same item be confirmed again right after returning from a submenu.
+            bool selIsAnotherManaged = sel != null
+                                       && (current == null || sel != current.gameObject)
+                                       && IsManaged(sel);
+            if (current != null && !selIsAnotherManaged)
             {
+                if (EventSystem.current != null && sel != current.gameObject)
+                    EventSystem.current.SetSelectedGameObject(current.gameObject);
                 var btn = current as Button;
                 if (btn != null) btn.onClick.Invoke();
             }
             else if (current != null)
             {
                 Debug.LogWarning($"[ArcadeUINavigator] Confirm ignored: nav focus is " +
-                                 $"'{current.name}' but EventSystem-selected is " +
-                                 $"'{(sel != null ? sel.name : "null")}'. " +
-                                 "Mouse hover diverged from gamepad nav — re-navigate first.");
+                                 $"'{current.name}' but the mouse has focused another managed " +
+                                 $"button '{(sel != null ? sel.name : "null")}'. Re-navigate first.");
             }
         }
 
@@ -198,6 +232,22 @@ public class ArcadeUINavigator : MonoBehaviour
         // Re-apply visuals every frame so the pulse animates AND any
         // accidental scale resets get re-asserted.
         ApplyHighlightVisuals();
+    }
+
+    /// <summary>True if the GameObject is one of the buttons this navigator manages.</summary>
+    bool IsManaged(GameObject go)
+    {
+        if (selectables == null || go == null) return false;
+        foreach (var s in selectables)
+            if (s != null && s.gameObject == go) return true;
+        return false;
+    }
+
+    static bool IsInsideReturnPlayerPrompt(Transform item)
+    {
+        for (Transform current = item; current != null; current = current.parent)
+            if (current.name == "ReturnPlayerPrompt") return true;
+        return false;
     }
 
     void SyncIndexFromEventSystem()

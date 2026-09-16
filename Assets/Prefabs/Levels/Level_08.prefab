@@ -743,7 +743,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.06, z: 5.3}
-  m_LocalScale: {x: 0.79977417, y: 0.05, z: 0.79977417}
+  m_LocalScale: {x: 0.7707247, y: 0.05, z: 0.7707247}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7117922101068182808}
@@ -824,7 +824,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.47186673
+  m_Radius: 0.45472756
   m_Center: {x: 0.000000059604645, y: 0, z: -0.00000008940697}
 --- !u!114 &2782397914954180414
 MonoBehaviour:
@@ -2194,7 +2194,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6eb157fc9db48404fb9aba74dcd67224, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RotatingWall
-  speedDegPerSec: 65
+  speedDegPerSec: 59.65517
   phaseDeg: 0
 --- !u!114 &2879097899646111893
 MonoBehaviour:
@@ -2601,6 +2601,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7117922101068182808}
+  - component: {fileID: 6200470251050460893}
   m_Layer: 0
   m_Name: Level_08
   m_TagString: Untagged
@@ -2648,6 +2649,24 @@ Transform:
   - {fileID: 1257290669197480030}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6200470251050460893
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8655170611465491683}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ecb669e9594e44aad80fff25de3f5283, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDifficultyProfile
+  balanceVersion: 2
+  levelNumber: 8
+  chapter: 2
+  difficultyRating: 2
+  difficultyIndex: 8
+  mechanicHint: 'Snake lane: maintain control through repeated turns.'
 --- !u!1 &9014232436304681045
 GameObject:
   m_ObjectHideFlags: 0
@@ -2723,7 +2742,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.05, z: 5.3}
-  m_LocalScale: {x: 1.0807759, y: 0.04, z: 1.0807759}
+  m_LocalScale: {x: 1.0415199, y: 0.04, z: 1.0415199}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7117922101068182808}

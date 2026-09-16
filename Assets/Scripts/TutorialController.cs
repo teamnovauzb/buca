@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Serialization;
 using TMPro;
 using System.Collections;
 
@@ -7,8 +8,8 @@ using System.Collections;
 /// First-play onboarding. Detects input mode and shows the matching demo:
 ///
 ///   • Mouse mode: ghost hand drags back, puck flies forward (existing)
-///   • Arcade mode: joystick stick tilts → Black button presses + power arc
-///     fills → Black releases + puck flies in aim direction (NEW)
+///   • Arcade mode: joystick rotates aim → Black button presses + power arc
+///     fills → Black releases + puck flies in aim direction
 ///
 /// Cycles indefinitely until the player takes their first real shot, at
 /// which point the tutorial fades out and the "seen" flag is persisted to
@@ -31,8 +32,9 @@ public class TutorialController : MonoBehaviour
     public RectTransform ghostJoystick;
     [Tooltip("Sub-element inside ghostJoystick representing the moving ball. Animates the tilt direction.")]
     public RectTransform ghostJoystickBall;
-    [Tooltip("Image of the Black arcade button. Brightens during the CHARGE phase of the arcade demo.")]
-    public Image ghostBlackButton;
+    [FormerlySerializedAs("ghostBlackButton")]
+    [Tooltip("Image of the Black arcade gameplay button. Brightens during the CHARGE phase of the arcade demo.")]
+    public Image ghostFireButton;
     [Tooltip("Image of a power-arc ring that fills 0→1 during the CHARGE phase.")]
     public Image ghostPowerRing;
 
@@ -46,8 +48,8 @@ public class TutorialController : MonoBehaviour
 
     bool _active;
     Vector2 _puckBase, _handBase, _ballBase;
-    Color _blackBtnDim = new Color(0.18f, 0.18f, 0.22f, 1f);
-    Color _blackBtnLit = new Color(0.55f, 0.55f, 0.65f, 1f);
+    Color _fireBtnDim = new Color(0.04f, 0.04f, 0.055f, 1f);
+    Color _fireBtnLit = new Color(0.38f, 0.40f, 0.48f, 1f);
 
     public static bool Seen => PlayerPrefs.GetInt(PrefSeen, 0) == 1;
 
@@ -102,7 +104,7 @@ public class TutorialController : MonoBehaviour
     {
         if (ghostHand != null) ghostHand.gameObject.SetActive(!arcade);
         if (ghostJoystick != null) ghostJoystick.gameObject.SetActive(arcade);
-        if (ghostBlackButton != null) ghostBlackButton.gameObject.SetActive(arcade);
+        if (ghostFireButton != null) ghostFireButton.gameObject.SetActive(arcade);
         if (ghostPowerRing != null) ghostPowerRing.gameObject.SetActive(arcade);
     }
 
@@ -151,42 +153,41 @@ public class TutorialController : MonoBehaviour
     }
 
     // ─────────────────────────────────────────────────────────
-    // Arcade demo: joystick → Black hold + power fill → release
+    // Arcade demo: joystick → Red hold + power fill → release
     // ─────────────────────────────────────────────────────────
     IEnumerator PlayArcadeDemo()
     {
         // Reset visuals to neutral
         if (ghostJoystickBall != null) ghostJoystickBall.anchoredPosition = _ballBase;
-        if (ghostBlackButton != null) ghostBlackButton.color = _blackBtnDim;
+        if (ghostFireButton != null) ghostFireButton.color = _fireBtnDim;
         if (ghostPowerRing != null) ghostPowerRing.fillAmount = 0f;
         if (ghostPuck != null) ghostPuck.anchoredPosition = _puckBase;
 
-        // Phase 1 — TILT JOYSTICK TO AIM (~30% of cycle)
-        if (instructionText != null) instructionText.text = "TILT TO AIM";
+        // Phase 1 — ROTATE AIM LEFT / RIGHT (~30% of cycle)
+        if (instructionText != null) instructionText.text = "LEFT / RIGHT TO AIM";
         float dur = loopDuration * 0.30f, t = 0f;
         while (t < dur && _active)
         {
             t += Time.deltaTime;
             float k = Mathf.Clamp01(t / dur);
-            float e = 1f - Mathf.Pow(1f - k, 2f);
-            // Tilt the ball UP (the aim direction we'll launch in)
+            // Sweep horizontally to demonstrate continuous angular steering.
             if (ghostJoystickBall != null)
-                ghostJoystickBall.anchoredPosition = _ballBase + new Vector2(0f, joystickTiltDistance * e);
+                ghostJoystickBall.anchoredPosition = _ballBase + new Vector2(Mathf.Sin(k * Mathf.PI * 2f) * joystickTiltDistance, 0f);
             yield return null;
         }
 
         // Phase 2 — HOLD BLACK / CHARGE (~45% of cycle)
-        if (instructionText != null) instructionText.text = "HOLD  ●  TO CHARGE";
+        if (instructionText != null) instructionText.text = "HOLD BLACK TO CHARGE";
         dur = loopDuration * 0.45f; t = 0f;
         while (t < dur && _active)
         {
             t += Time.deltaTime;
             float k = Mathf.Clamp01(t / dur);
             // Black button "pressed" — brighten + slight scale pulse
-            if (ghostBlackButton != null)
+            if (ghostFireButton != null)
             {
-                ghostBlackButton.color = Color.Lerp(_blackBtnDim, _blackBtnLit, k);
-                ghostBlackButton.transform.localScale = Vector3.one * (1f + 0.08f * k);
+                ghostFireButton.color = Color.Lerp(_fireBtnDim, _fireBtnLit, k);
+                ghostFireButton.transform.localScale = Vector3.one * (1f + 0.08f * k);
             }
             // Power ring fills 0 → 1
             if (ghostPowerRing != null)
@@ -202,11 +203,11 @@ public class TutorialController : MonoBehaviour
             t += Time.deltaTime;
             float k = Mathf.Clamp01(t / dur);
             float e = 1f - Mathf.Pow(1f - k, 2f);
-            if (ghostBlackButton != null)
+            if (ghostFireButton != null)
             {
                 // Snap back to dim
-                ghostBlackButton.color = Color.Lerp(_blackBtnLit, _blackBtnDim, k);
-                ghostBlackButton.transform.localScale = Vector3.Lerp(
+                ghostFireButton.color = Color.Lerp(_fireBtnLit, _fireBtnDim, k);
+                ghostFireButton.transform.localScale = Vector3.Lerp(
                     Vector3.one * 1.08f, Vector3.one, k);
             }
             if (ghostPowerRing != null)
@@ -223,10 +224,10 @@ public class TutorialController : MonoBehaviour
         // Reset for next loop
         if (ghostPuck != null) ghostPuck.anchoredPosition = _puckBase;
         if (ghostJoystickBall != null) ghostJoystickBall.anchoredPosition = _ballBase;
-        if (ghostBlackButton != null)
+        if (ghostFireButton != null)
         {
-            ghostBlackButton.color = _blackBtnDim;
-            ghostBlackButton.transform.localScale = Vector3.one;
+            ghostFireButton.color = _fireBtnDim;
+            ghostFireButton.transform.localScale = Vector3.one;
         }
         if (ghostPowerRing != null) ghostPowerRing.fillAmount = 0f;
     }

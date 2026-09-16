@@ -39,6 +39,7 @@ namespace Luxodd.Game.Scripts.Network
 
         private ClientWebSocket _clientWebSocket;
         private bool _isConnected;
+        private bool _isConnecting;
         private bool _wasConnected = false;
         private bool _isInReconnection = false;
         private bool _isInFlushing = false;
@@ -63,7 +64,7 @@ namespace Luxodd.Game.Scripts.Network
         {
             _onConnectedCallback = onSuccessCallback;
             _onConnectionErrorCallback = onErrorCallback;
-            _ = StartConnectionAsync();
+            BeginConnection();
         }
 
         internal void ConnectToServer(LuxoddSessionPayload sessionPayload, Action onSuccessCallback = null, Action onErrorCallback = null)
@@ -71,12 +72,33 @@ namespace Luxodd.Game.Scripts.Network
             _sessionPayload = sessionPayload;
             _onConnectedCallback = onSuccessCallback;
             _onConnectionErrorCallback = onErrorCallback;
+            BeginConnection();
+        }
+
+        private void BeginConnection()
+        {
+            if (_isConnected)
+            {
+                _onConnectedCallback?.Invoke();
+                return;
+            }
+
+            // Prevent two browser sockets from replacing each other while the
+            // first connection is still in the CONNECTING state.
+            if (_isConnecting)
+            {
+                LoggerHelper.Log($"[{DateTime.Now}][{GetType().Name}][{nameof(BeginConnection)}] Connection already in progress");
+                return;
+            }
+
+            _isConnecting = true;
             _ = StartConnectionAsync();
         }
 
         public void CloseConnection()
         {
             _isConnected = false;
+            _isConnecting = false;
 #if !UNITY_EDITOR
             _socketLibraryWrapper.CloseWebSocketConnection();
 #else
@@ -180,12 +202,17 @@ namespace Luxodd.Game.Scripts.Network
             LoggerHelper.Log(
                 $"[{DateTime.Now}][{GetType().Name}][{nameof(OnWebSocketConnectionErrorHandler)}] OK, error:{error}");
             _isConnected = false;
+            _isConnecting = false;
+            _isConnectedEvent.Notify(false);
+            _onConnectionErrorCallback?.Invoke();
         }
 
         private void OnWebSocketClosedHandler(int code)
         {
             LoggerHelper.Log($"[{DateTime.Now}][{GetType().Name}][{nameof(OnWebSocketConnectionErrorHandler)}] OK");
             _isConnected = false;
+            _isConnecting = false;
+            _isConnectedEvent.Notify(false);
         }
 
         private void UnsubscribeFromEvents()
@@ -258,7 +285,10 @@ namespace Luxodd.Game.Scripts.Network
                 LoggerHelper.LogError($"[{DateTime.Now}][{GetType().Name}][{nameof(StartConnectionAsync)}] Error: {ex}");
                 Console.WriteLine(ex);
                 _isConnected = false;
-                throw;
+                _isConnecting = false;
+                _isConnectedEvent.Notify(false);
+                _onConnectionErrorCallback?.Invoke();
+                return;
             }
 #else
             LoggerHelper.Log(
@@ -280,7 +310,10 @@ namespace Luxodd.Game.Scripts.Network
                 LoggerHelper.LogError($"[{DateTime.Now}][{GetType().Name}][{nameof(StartConnectionAsync)}] Error: {e}");
                 Console.WriteLine(e);
                 _isConnected = false;
-                throw;
+                _isConnecting = false;
+                _isConnectedEvent.Notify(false);
+                _onConnectionErrorCallback?.Invoke();
+                return;
             }
 
 #endif
@@ -387,10 +420,16 @@ namespace Luxodd.Game.Scripts.Network
         private void OnWebSocketConnectedHandler()
         {
             Debug.Log($"[{DateTime.Now}][{GetType().Name}][{nameof(OnWebSocketConnectedHandler)}] OK");
+            _isConnecting = false;
             _isConnected = true;
             _wasConnected = true;
             _isConnectedEvent.Notify(_isConnected);
             _onConnectedCallback?.Invoke();
+
+            if (_sendCommandDataQueue.Count > 0 && _isInFlushing == false)
+            {
+                StartCoroutine(FlushCommands());
+            }
         }
 
         private void AddCommandRequestHandler(CommandRequestType commandRequestType,

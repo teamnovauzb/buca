@@ -24,12 +24,24 @@ mergeInto(LibraryManager.library, {
         S.listenerAdded = true;
 
         function sendToUnity(method, arg) {
-            if (typeof unityInstance !== "undefined") {
-                // arg should be string
-                unityInstance.SendMessage(S.targetGO, method, arg || "");
-            } else {
-                console.warn("[LuxoddSession] unityInstance is not defined, drop", method, arg);
+            var attempts = 0;
+
+            function deliver() {
+                var instance = window.unityInstance;
+                if (instance && typeof instance.SendMessage === "function") {
+                    instance.SendMessage(S.targetGO, method, arg || "");
+                    return;
+                }
+
+                attempts++;
+                if (attempts <= 240) {
+                    setTimeout(deliver, 25);
+                } else {
+                    console.error("[LuxoddSession] Unity did not become ready for", method);
+                }
             }
+
+            deliver();
         }
 
         function onLuxoddSession(e) {

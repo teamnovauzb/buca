@@ -31,9 +31,20 @@ public static class UnlockAllLevels
         PlayerPrefs.SetInt("BucaHighestLevel", 0);    // only Level 1 unlocked
         PlayerPrefs.DeleteKey("BucaCurrentLevel");
         PlayerPrefs.DeleteKey("BucaPendingLevel");
+
+        // A fresh test profile must also forget old results. Otherwise the
+        // level picker keeps showing pre-balance high scores/stars because
+        // gameplay deliberately stores the best result ever achieved.
+        for (int i = 0; i < 30; i++)
+        {
+            PlayerPrefs.DeleteKey(LevelManager.PrefLevelStars + i);
+            PlayerPrefs.DeleteKey(LevelManager.PrefLevelScore + i);
+        }
+        PlayerPrefs.DeleteKey(TutorialController.PrefSeen);
         PlayerPrefs.Save();
         EditorUtility.DisplayDialog("Progress reset ✓",
-            "Back to a fresh start — only Level 1 is unlocked.", "OK");
+            "Local progress, stars, scores, and tutorial state were cleared. " +
+            "Only Level 1 is unlocked.", "OK");
     }
 }
 #endif

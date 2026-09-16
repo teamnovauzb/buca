@@ -379,7 +379,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6eb157fc9db48404fb9aba74dcd67224, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RotatingWall
-  speedDegPerSec: -75
+  speedDegPerSec: -79.44827
   phaseDeg: 0
 --- !u!114 &5535416446389823443
 MonoBehaviour:
@@ -555,7 +555,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6eb157fc9db48404fb9aba74dcd67224, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RotatingWall
-  speedDegPerSec: 75
+  speedDegPerSec: 73.44827
   phaseDeg: 0
 --- !u!114 &5254134984127890592
 MonoBehaviour:
@@ -2001,6 +2001,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5127154847940553561}
+  - component: {fileID: 3477438043280435400}
   m_Layer: 0
   m_Name: Level_18
   m_TagString: Untagged
@@ -2047,6 +2048,24 @@ Transform:
   - {fileID: 3840250648606832415}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &3477438043280435400
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7290306900183310719}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ecb669e9594e44aad80fff25de3f5283, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDifficultyProfile
+  balanceVersion: 2
+  levelNumber: 18
+  chapter: 3
+  difficultyRating: 3
+  difficultyIndex: 18
+  mechanicHint: 'Spinning gauntlet: time two counter-rotating walls.'
 --- !u!1 &8195950696584253473
 GameObject:
   m_ObjectHideFlags: 0
@@ -2165,7 +2184,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.05, z: 5.4}
-  m_LocalScale: {x: 0.91224134, y: 0.04, z: 0.91224134}
+  m_LocalScale: {x: 0.9112126, y: 0.04, z: 0.9112126}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 5127154847940553561}
@@ -2572,7 +2591,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.06, z: 5.4}
-  m_LocalScale: {x: 0.6750586, y: 0.05, z: 0.6750586}
+  m_LocalScale: {x: 0.67429733, y: 0.05, z: 0.67429733}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 5127154847940553561}
@@ -2653,7 +2672,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.39828455
+  m_Radius: 0.3978354
   m_Center: {x: 0.00000005960464, y: 0, z: -0.00000008940696}
 --- !u!114 &3592145489722549498
 MonoBehaviour:

@@ -44,7 +44,7 @@ public class LeaderboardCardFX : MonoBehaviour
         if (titleShimmer != null)
         {
             // ping-pong from -shimmerTravelDistance/2 to +shimmerTravelDistance/2
-            float phase = Mathf.Repeat(t / shimmerCycleSeconds, 1f);
+            float phase = Mathf.Repeat(t / Mathf.Max(0.01f, shimmerCycleSeconds), 1f);
             // Sawtooth then bounce — looks like a streak crossing the title
             float xn = Mathf.Sin(phase * Mathf.PI * 2f); // -1..1
             var p = titleShimmer.anchoredPosition;

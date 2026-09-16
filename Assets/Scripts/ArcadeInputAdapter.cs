@@ -10,8 +10,8 @@ using UnityEngine;
 /// installed, so editor testing on a regular gamepad still works.
 ///
 /// Color mapping (matches the arcade panel + Luxodd docs):
-///   Black  = JoystickButton0  (default Confirm / Launch)
-///   Red    = JoystickButton1
+///   Black  = JoystickButton0  (default menu Confirm)
+///   Red    = JoystickButton1  (available auxiliary button)
 ///   Green  = JoystickButton2
 ///   Yellow = JoystickButton3
 ///   Blue   = JoystickButton4
@@ -19,9 +19,9 @@ using UnityEngine;
 ///   Orange = JoystickButton8  (system overlay / help)
 ///   White  = JoystickButton9  (system Back / Cancel)
 ///
-/// Use Black for "go" actions (launch puck, advance panels). Use White
-/// for "back" actions (cancel from menus). Reserved system buttons
-/// (Orange / White) should not drive gameplay.
+/// Use Black for menu confirmation and the primary gameplay action,
+/// and White for back/cancel. Orange is reserved for the Luxodd system
+/// overlay/help and must never drive gameplay.
 /// </summary>
 public static class ArcadeInputAdapter
 {
@@ -93,10 +93,25 @@ public static class ArcadeInputAdapter
                              "This warning prints once per method per session.");
     }
 
-    /// <summary>Black is the canonical "Confirm / Launch" button.</summary>
+    /// <summary>Black is the canonical menu Confirm button.</summary>
     public static bool ConfirmDown() => GetButtonDown(Button.Black);
     /// <summary>White is the canonical "Back / Cancel" button.</summary>
     public static bool CancelDown() => GetButtonDown(Button.White);
+
+    /// <summary>
+    /// True when a player-owned action button is pressed. Orange opens the
+    /// Luxodd system/help overlay and White is the system back/cancel action,
+    /// so neither is included in "press any gameplay button" prompts.
+    /// </summary>
+    public static bool AnyGameplayButtonDown()
+    {
+        return GetButtonDown(Button.Black)
+            || GetButtonDown(Button.Red)
+            || GetButtonDown(Button.Green)
+            || GetButtonDown(Button.Yellow)
+            || GetButtonDown(Button.Blue)
+            || GetButtonDown(Button.Purple);
+    }
 
     // ─────────────────────────────────────────────────────────
     // Activity detection — used to auto-switch from mouse to arcade

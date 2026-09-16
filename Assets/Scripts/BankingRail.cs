@@ -24,6 +24,7 @@ public class BankingRail : MonoBehaviour
     public float maxSpeed = 14f;
 
     const float Cooldown = 0.05f;
+    const float ContactSkin = 0.018f;
     float _lastHit = -999f;
 
     void OnCollisionEnter(Collision c)
@@ -33,12 +34,30 @@ public class BankingRail : MonoBehaviour
         if (Time.time - _lastHit < Cooldown) return;
         _lastHit = Time.time;
 
+        ContactPoint contact = c.GetContact(0);
+
         // Outward surface normal (from the contact point toward the puck center).
-        Vector3 n = rb.position - c.GetContact(0).point;
+        Vector3 n = rb.worldCenterOfMass - contact.point;
         n.y = 0f;
         if (n.sqrMagnitude < 1e-4f) n = -c.relativeVelocity;
         n.y = 0f;
         n.Normalize();
+
+        // Keep the entire puck on the incoming side of the visible rail. At
+        // high speed PhysX can report a valid contact after a small overlap;
+        // resolving that overlap here prevents the puck from ever appearing
+        // embedded in, or passing through, the blue wall.
+        SphereCollider sphere = rb.GetComponent<SphereCollider>();
+        float puckRadius = 0.25f;
+        if (sphere != null)
+        {
+            Vector3 scale = sphere.transform.lossyScale;
+            puckRadius = sphere.radius * Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.z));
+        }
+        float centreDistance = Vector3.Dot(rb.worldCenterOfMass - contact.point, n);
+        float correction = puckRadius + ContactSkin - centreDistance;
+        if (correction > 0f)
+            rb.position += n * correction;
 
         float impactSpeed = c.relativeVelocity.magnitude;   // speed at the moment of contact
         Vector3 v = rb.linearVelocity;
@@ -53,6 +72,7 @@ public class BankingRail : MonoBehaviour
 
         float outSpeed = Mathf.Min(impactSpeed * bankBoost, maxSpeed);
         rb.linearVelocity = outDir * outSpeed;
+        rb.WakeUp();
 
         // No extra FX here — the puck's own OnCollisionEnter already sparks, lights
         // this rail, and plays the wall-hit sound for solid collisions like this one.

@@ -11,7 +11,7 @@ using UnityEngine;
 public class ScorePickup : MonoBehaviour
 {
     [Tooltip("Bonus points added to the live score on collection.")]
-    public int bonusPoints = 150;
+    public int bonusPoints = 75;
     [Tooltip("Scale multiplier at collection for the pop effect.")]
     public float popScale = 2.5f;
     [Tooltip("Seconds for the pop+fade animation.")]
@@ -46,7 +46,8 @@ public class ScorePickup : MonoBehaviour
     void OnTriggerEnter(Collider other)
     {
         if (_collected) return;
-        if (other.attachedRigidbody == null) return; // only puck
+        var rb = other.attachedRigidbody;
+        if (rb == null || rb.GetComponent<PuckController>() == null) return;
         _collected = true;
 
         if (LevelManager.Instance != null)
@@ -67,10 +68,11 @@ public class ScorePickup : MonoBehaviour
         Material matInstance = mr != null ? mr.material : null;
 
         float t = 0f;
-        while (t < popDuration)
+        float duration = Mathf.Max(0.01f, popDuration);
+        while (t < duration)
         {
             t += Time.deltaTime;
-            float k = Mathf.Clamp01(t / popDuration);
+            float k = Mathf.Clamp01(t / duration);
             float s = Mathf.Lerp(1f, popScale, 1f - (1f - k) * (1f - k)); // easeOutQuad
             transform.localScale = _baseScale * s;
             if (matInstance != null && matInstance.HasProperty("_BaseColor"))

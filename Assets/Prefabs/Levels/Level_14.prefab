@@ -30,7 +30,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 2.6, y: 0.06, z: 5.2}
-  m_LocalScale: {x: 0.7230948, y: 0.05, z: 0.7230948}
+  m_LocalScale: {x: 0.712385, y: 0.05, z: 0.712385}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 8023377562820690882}
@@ -111,7 +111,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.42662594
+  m_Radius: 0.42030713
   m_Center: {x: 0.000000059604645, y: 0, z: -0.00000008940697}
 --- !u!114 &6001843597814453973
 MonoBehaviour:
@@ -1228,6 +1228,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8023377562820690882}
+  - component: {fileID: 6869332011935896226}
   m_Layer: 0
   m_Name: Level_14
   m_TagString: Untagged
@@ -1278,6 +1279,24 @@ Transform:
   - {fileID: 8622356811603509655}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6869332011935896226
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4750716764868603638}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ecb669e9594e44aad80fff25de3f5283, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDifficultyProfile
+  balanceVersion: 2
+  levelNumber: 14
+  chapter: 3
+  difficultyRating: 3
+  difficultyIndex: 14
+  mechanicHint: 'Deadly slalom: prioritize safety over speed.'
 --- !u!1 &5055556154435162641
 GameObject:
   m_ObjectHideFlags: 0
@@ -2394,7 +2413,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 2.6, y: 0.05, z: 5.2}
-  m_LocalScale: {x: 0.97715515, y: 0.04, z: 0.97715515}
+  m_LocalScale: {x: 0.9626824, y: 0.04, z: 0.9626824}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 8023377562820690882}
@@ -3115,7 +3134,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: b203db769cf9d2b40bb1a1c3111003b8, type: 2}
+  - {fileID: 2100000, guid: 4419fd6428823d24da70860acff34570, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

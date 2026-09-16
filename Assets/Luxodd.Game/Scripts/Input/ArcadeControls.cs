@@ -167,16 +167,33 @@ namespace Luxodd.Game
             var js = GetArcadeJoystick();
             if (js != null)
             {
-                // Joystick has "stick" (Vector2)
-                return js.stick.ReadValue();
+                // Most arcade encoders expose X/Y axes as the main stick.
+                var stick = js.stick != null ? js.stick.ReadValue() : Vector2.zero;
+                if (stick.sqrMagnitude > 0.0001f)
+                    return stick;
+
+                // Some digital cabinet encoders expose the lever as a hat/D-pad
+                // instead of analog axes. Pressure is not required: directions
+                // are converted to the same Vector2 used by gameplay.
+                if (js.hatswitch != null)
+                {
+                    var hat = js.hatswitch.ReadValue();
+                    if (hat.sqrMagnitude > 0.0001f)
+                        return hat;
+                }
             }
 
             // Fallback to Gamepad
             var pad = Gamepad.current;
             if (pad != null)
             {
-                // Default: leftStick
-                return pad.leftStick.ReadValue();
+                var stick = pad.leftStick.ReadValue();
+                if (stick.sqrMagnitude > 0.0001f)
+                    return stick;
+
+                // Arcade USB boards are frequently reported by browsers as a
+                // standard Gamepad whose lever is the D-pad, not leftStick.
+                return pad.dpad.ReadValue();
             }
 
             return Vector2.zero;
@@ -186,6 +203,58 @@ namespace Luxodd.Game
         {
             // Often arcade controllers show up as Joystick (HID).
             return Joystick.current;
+        }
+
+        // WebGL creates numbered generic-joystick controls as "Button 1",
+        // "Button 2", ... (one-based and containing a space). Native HID
+        // layouts may instead use "button0" or "button1". Cache the resolved
+        // controls so per-frame polling stays allocation-free.
+        private const int JoystickButtonCount = 10;
+        private static Joystick _cachedJoystick;
+        private static readonly ButtonControl[] _cachedJoystickButtons =
+            new ButtonControl[JoystickButtonCount];
+
+        private static ButtonControl GetJoystickButton(Joystick joystick, int zeroBasedIndex)
+        {
+            if (joystick == null || zeroBasedIndex < 0 || zeroBasedIndex >= JoystickButtonCount)
+                return null;
+
+            if (_cachedJoystick != joystick)
+            {
+                _cachedJoystick = joystick;
+                System.Array.Clear(_cachedJoystickButtons, 0, _cachedJoystickButtons.Length);
+
+                // Detect the numbering convention once. Trying "button1" first
+                // for every index is incorrect on one-based layouts because Red
+                // (index 1) would accidentally read the first physical button.
+                bool zeroBasedNames =
+                    joystick.TryGetChildControl<ButtonControl>("button0") != null;
+
+                for (int index = 0; index < JoystickButtonCount; index++)
+                {
+                    ButtonControl control;
+                    if (zeroBasedNames)
+                    {
+                        control = joystick.TryGetChildControl<ButtonControl>($"button{index}");
+                    }
+                    else
+                    {
+                        int oneBased = index + 1;
+                        control = joystick.TryGetChildControl<ButtonControl>($"Button {oneBased}")
+                                  ?? joystick.TryGetChildControl<ButtonControl>($"button {oneBased}")
+                                  ?? joystick.TryGetChildControl<ButtonControl>($"button{oneBased}");
+                    }
+
+                    _cachedJoystickButtons[index] = control;
+                }
+
+                // Older single-trigger joystick layouts may expose only the
+                // first button through the canonical trigger control.
+                if (_cachedJoystickButtons[0] == null)
+                    _cachedJoystickButtons[0] = joystick.trigger;
+            }
+
+            return _cachedJoystickButtons[zeroBasedIndex];
         }
 
         /// <summary>
@@ -201,7 +270,7 @@ namespace Luxodd.Game
                 var index = ColorToJoystickButtonIndex(color);
                 if (index >= 0)
                 {
-                    var btn = js.TryGetChildControl<ButtonControl>($"button{index}");
+                    var btn = GetJoystickButton(js, index);
                     if (btn != null) return btn;
                 }
             }
@@ -243,14 +312,14 @@ namespace Luxodd.Game
         {
             return color switch
             {
-                // Common ABXY scheme:
+                // Preserve the documented physical button indices even when
+                // WebGL reports the cabinet as a standard Gamepad.
                 ArcadeButtonColor.Black  => pad.buttonSouth, // A / Cross
                 ArcadeButtonColor.Red    => pad.buttonEast,  // B / Circle
-                ArcadeButtonColor.Blue   => pad.buttonWest,  // X / Square
+                ArcadeButtonColor.Green  => pad.buttonWest,  // index 2
                 ArcadeButtonColor.Yellow => pad.buttonNorth, // Y / Triangle
 
-                // Optional extra buttons:
-                ArcadeButtonColor.Green  => pad.leftShoulder,
+                ArcadeButtonColor.Blue   => pad.leftShoulder,  // index 4
                 ArcadeButtonColor.Purple => pad.rightShoulder,
                 ArcadeButtonColor.White  => pad.startButton,
                 ArcadeButtonColor.Orange => pad.selectButton,

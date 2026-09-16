@@ -285,7 +285,7 @@ public class MenuSetupHelper : MonoBehaviour
         // ─────────────────────────────────────────────────────
         // Idle countdown — anchored TOP-RIGHT of the card, always visible.
         // Looks like an arcade attract-mode HUD: pill background with
-        // clock-style label "AUTO START  15s". Pulses red when ≤ 5s.
+        // clock-style label "AUTO START  30s". Pulses red when ≤ 5s.
         // Sits OUTSIDE the title/grid/footer flow so it never overlaps.
         // ─────────────────────────────────────────────────────
         var idlePillGO = new GameObject("IdleCountdownPill", typeof(RectTransform));
@@ -310,7 +310,7 @@ public class MenuSetupHelper : MonoBehaviour
         idleRT.offsetMin = new Vector2(14f, 0f);
         idleRT.offsetMax = new Vector2(-14f, 0f);
         var idleTmp = idleGO.AddComponent<TextMeshProUGUI>();
-        idleTmp.text = "AUTO START  15s";
+        idleTmp.text = "AUTO START  30s";
         idleTmp.fontSize = 26;
         idleTmp.fontStyle = FontStyles.Bold;
         idleTmp.alignment = TextAlignmentOptions.Center;
@@ -367,6 +367,19 @@ public class MenuSetupHelper : MonoBehaviour
         blrt.offsetMin = new Vector2(80f, 0f); blrt.offsetMax = new Vector2(-10f, 0f);
         backLabel.characterSpacing = 4f;
         backLabel.raycastTarget = false;
+
+        // ─────────────────────────────────────────────────────
+        // Safe-area fit — keep the whole card inside the visible/safe
+        // viewport on every resolution + aspect ratio so the top never
+        // clips under a device border. Uniform-scales the card down when
+        // needed and re-centers it between the safe-area insets. Design
+        // is preserved (only localScale + anchoredPosition change).
+        // ─────────────────────────────────────────────────────
+        var fitter = cardGO.AddComponent<SafeAreaFitter>();
+        fitter.target = crt;
+        fitter.area = rrt;
+        fitter.designSize = new Vector2(cardW, cardH);
+        ctrl.cardFitter = fitter;
 
         // Stay GameObject-active so coroutines work; CanvasGroup hides it
         // (alpha=0 + blocksRaycasts=false set in LevelSelectController.Awake).
@@ -675,8 +688,8 @@ public class MenuSetupHelper : MonoBehaviour
         starsRow.transform.SetParent(tile.transform, false);
         var srt = (RectTransform)starsRow.transform;
         srt.anchorMin = new Vector2(0.5f, 0f); srt.anchorMax = new Vector2(0.5f, 0f); srt.pivot = new Vector2(0.5f, 0f);
-        srt.anchoredPosition = new Vector2(0f, 14f);
-        srt.sizeDelta = new Vector2(120f, 30f);
+        srt.anchoredPosition = new Vector2(0f, 13f);
+        srt.sizeDelta = new Vector2(132f, 34f);
         var starImgs = new Image[3];
         for (int s = 0; s < 3; s++)
         {
@@ -684,12 +697,16 @@ public class MenuSetupHelper : MonoBehaviour
             sGO.transform.SetParent(starsRow.transform, false);
             var srt2 = (RectTransform)sGO.transform;
             srt2.anchorMin = new Vector2(0f, 0.5f); srt2.anchorMax = new Vector2(0f, 0.5f); srt2.pivot = new Vector2(0f, 0.5f);
-            srt2.anchoredPosition = new Vector2(s * 36f, 0f);
-            srt2.sizeDelta = new Vector2(28f, 28f);
+            srt2.anchoredPosition = new Vector2(s * 40f, 0f);
+            srt2.sizeDelta = new Vector2(32f, 32f);
             var img = sGO.AddComponent<Image>();
             img.sprite = starSp;
-            img.color = new Color(1f, 1f, 1f, 0.12f);
+            img.color = new Color(0.58f, 0.72f, 0.88f, 0.48f);
             img.raycastTarget = false;
+            var outline = sGO.AddComponent<Outline>();
+            outline.effectColor = new Color(0.02f, 0.08f, 0.16f, 0.82f);
+            outline.effectDistance = new Vector2(1.5f, -1.5f);
+            outline.useGraphicAlpha = true;
             starImgs[s] = img;
         }
 

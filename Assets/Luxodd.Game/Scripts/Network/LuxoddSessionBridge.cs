@@ -115,6 +115,15 @@ namespace Luxodd.Game.Scripts.Network
             WebSocketUrl = GetLuxoddSessionWsUrl();
             Debug.Log("[LuxoddSessionBridge] Refreshed from JS state. Token len = " +
                       (Token?.Length ?? 0) + ", wsUrl = " + WebSocketUrl);
+
+            if (!string.IsNullOrEmpty(Token) && !string.IsNullOrEmpty(WebSocketUrl))
+            {
+                SessionPayload = new LuxoddSessionPayload
+                {
+                    Token = Token,
+                    WsUrl = WebSocketUrl
+                };
+            }
         }
         catch (Exception e)
         {
