@@ -478,7 +478,10 @@ public class MainMenuController : MonoBehaviour
         _resumePanelRect.SetParent(root, false);
         _resumePanelRect.anchorMin = _resumePanelRect.anchorMax = new Vector2(0.5f, 0.5f);
         _resumePanelRect.pivot = new Vector2(0.5f, 0.5f);
-        _resumePanelRect.sizeDelta = new Vector2(900f, 560f);
+        // Reserve separate vertical bands for the question and helper line.
+        // The old 560-high card left only a narrow gap, and TMP's glyphs could
+        // draw beyond their RectTransform when the text changed by level.
+        _resumePanelRect.sizeDelta = new Vector2(900f, 640f);
 
         Image panelImage = panel.GetComponent<Image>();
         panelImage.sprite = _resumeRoundedSprite;
@@ -493,37 +496,42 @@ public class MainMenuController : MonoBehaviour
         panelOutline.effectColor = new Color(0.18f, 0.88f, 1f, 0.92f);
         panelOutline.effectDistance = new Vector2(4f, -4f);
 
-        CreateResumeBar(panel.transform, "TopGlow", new Vector2(0f, 246f),
+        CreateResumeBar(panel.transform, "TopGlow", new Vector2(0f, 282f),
             new Vector2(740f, 6f), new Color(0.15f, 0.92f, 1f, 1f));
-        CreateResumeBar(panel.transform, "GoldAccent", new Vector2(0f, 35f),
+        CreateResumeBar(panel.transform, "GoldAccent", new Vector2(0f, 20f),
             new Vector2(650f, 3f), new Color(1f, 0.69f, 0.20f, 0.9f));
 
         TMP_Text eyebrow = CreateResumeText(panel.transform, "Eyebrow", font,
             "PROGRESS FOUND", 27f, new Color(0.36f, 0.88f, 1f, 1f),
-            new Vector2(0f, 188f), new Vector2(780f, 48f));
+            new Vector2(0f, 226f), new Vector2(780f, 44f));
         eyebrow.fontStyle = FontStyles.Bold;
         eyebrow.characterSpacing = 7f;
 
         _resumeQuestion = CreateResumeText(panel.transform, "Question", font,
             "CONTINUE FROM LEVEL 2?", 50f, Color.white,
-            new Vector2(0f, 135f), new Vector2(820f, 70f));
+            new Vector2(0f, 153f), new Vector2(820f, 70f));
         _resumeQuestion.fontStyle = FontStyles.Bold;
+        _resumeQuestion.enableAutoSizing = true;
+        _resumeQuestion.fontSizeMin = 36f;
+        _resumeQuestion.fontSizeMax = 50f;
+        _resumeQuestion.overflowMode = TextOverflowModes.Truncate;
 
         TMP_Text hint = CreateResumeText(panel.transform, "Hint", font,
             "YOUR LAST LEVEL IS READY", 22f, new Color(0.72f, 0.76f, 0.88f, 1f),
-            new Vector2(0f, 70f), new Vector2(760f, 32f));
+            new Vector2(0f, 66f), new Vector2(760f, 36f));
         hint.characterSpacing = 3f;
+        hint.overflowMode = TextOverflowModes.Truncate;
 
         _resumeButtons = new Button[2];
         _resumeButtonImages = new Image[2];
         _resumeButtonLabels = new TMP_Text[2];
-        CreateResumeButton(panel.transform, 0, font, new Vector2(0f, -32f), "CONTINUE LEVEL 2");
-        CreateResumeButton(panel.transform, 1, font, new Vector2(0f, -155f), "START LEVEL 1");
+        CreateResumeButton(panel.transform, 0, font, new Vector2(0f, -65f), "CONTINUE LEVEL 2");
+        CreateResumeButton(panel.transform, 1, font, new Vector2(0f, -184f), "START LEVEL 1");
 
         TMP_Text controls = CreateResumeText(panel.transform, "Controls", font,
             "BLACK  SELECT     •     WHITE  BACK", 19f,
             new Color(0.50f, 0.72f, 0.86f, 0.88f),
-            new Vector2(0f, -242f), new Vector2(760f, 34f));
+            new Vector2(0f, -284f), new Vector2(760f, 34f));
         controls.characterSpacing = 2f;
 
         _resumePromptRoot.SetActive(false);

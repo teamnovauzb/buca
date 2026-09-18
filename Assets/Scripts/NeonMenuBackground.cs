@@ -30,7 +30,6 @@ public static class NeonMenuBackground
     static void Apply(Scene scene)
     {
         if (scene.name != MenuSceneName) return;
-
         var canvas = FindCanvas();
         if (canvas == null) return;
         if (canvas.Find("NeonBackground") != null) return; // already added

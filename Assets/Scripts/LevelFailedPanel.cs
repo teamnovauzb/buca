@@ -33,7 +33,7 @@ public class LevelFailedPanel : MonoBehaviour
 
     [Tooltip("Scene to load on Exit. Must be in Build Settings.")]
     public string mainMenuScene = "MainMenu";
-    [Tooltip("Seconds allowed to choose on a session Continue screen. When it expires, the session ends instead of occupying the cabinet forever.")]
+    [Tooltip("Seconds allowed to choose after non-time-up losses. TIME'S UP stays until the player chooses Continue or End.")]
     [Min(3f)] public float sessionDecisionSeconds = 10f;
 
     [Header("Premium presentation")]
@@ -47,6 +47,7 @@ public class LevelFailedPanel : MonoBehaviour
     bool _shown;
     float _shownTime;
     bool _sessionPrompt;
+    bool _timeUpSessionPrompt;
     bool _secondChancePrompt;
     string _sessionStatus;
     bool _choicesReady;
@@ -109,6 +110,7 @@ public class LevelFailedPanel : MonoBehaviour
         _onRetry = onRetry;
         _onEnd = null;
         _sessionPrompt = false;
+        _timeUpSessionPrompt = false;
         _secondChancePrompt = false;
         _sessionStatus = null;
         ApplyCopy(_defaultTitle, _defaultSubtitle, _defaultRetry, _defaultExit);
@@ -126,6 +128,7 @@ public class LevelFailedPanel : MonoBehaviour
         _onRetry = onContinue;
         _onEnd = onEnd;
         _sessionPrompt = true;
+        _timeUpSessionPrompt = IsTimeUpReason(reason);
         _secondChancePrompt = false;
         _sessionStatus = "RESTART THIS LEVEL WITH FULL TIME";
         string heading = string.IsNullOrWhiteSpace(reason) ? "CONTINUE?" : reason.ToUpperInvariant();
@@ -142,6 +145,7 @@ public class LevelFailedPanel : MonoBehaviour
         _onRetry = onRetry;
         _onEnd = null;
         _sessionPrompt = false;
+        _timeUpSessionPrompt = false;
         _secondChancePrompt = true;
         _sessionStatus = "THIS TIME YOU CAN DO IT";
         ApplyCopy("ONE MORE CHANCE FOR YOU", _sessionStatus, "TRY AGAIN", "END GAME");
@@ -155,7 +159,9 @@ public class LevelFailedPanel : MonoBehaviour
         if (_premium3D != null)
         {
             _premium3D.SetSecondChanceMode(_secondChancePrompt);
-            _premium3D.Show(_sessionPrompt, Mathf.CeilToInt(sessionDecisionSeconds));
+            // A time-up decision must remain visible until the player chooses.
+            _premium3D.Show(_sessionPrompt && !_timeUpSessionPrompt,
+                Mathf.CeilToInt(sessionDecisionSeconds));
         }
         if (retryButton != null) retryButton.gameObject.SetActive(true);
         if (exitButton != null)
@@ -193,6 +199,12 @@ public class LevelFailedPanel : MonoBehaviour
         }
 
         if (_shown && _sessionPrompt) Exit();
+    }
+
+    static bool IsTimeUpReason(string reason)
+    {
+        return !string.IsNullOrWhiteSpace(reason)
+            && reason.IndexOf("TIME", System.StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     IEnumerator FadeIn()
@@ -300,7 +312,8 @@ public class LevelFailedPanel : MonoBehaviour
         }
         _choicesReady = true;
         _shownTime = Time.unscaledTime; // fresh grace after choices appear
-        if (_sessionPrompt) StartCoroutine(SessionDecisionTimeout());
+        if (_sessionPrompt && !_timeUpSessionPrompt)
+            StartCoroutine(SessionDecisionTimeout());
     }
 
     IEnumerator ShakeTitle()
@@ -431,6 +444,7 @@ public class LevelFailedPanel : MonoBehaviour
         _onRetry = null;
         _onEnd = null;
         _sessionPrompt = false;
+        _timeUpSessionPrompt = false;
         _secondChancePrompt = false;
         _sessionStatus = null;
     }

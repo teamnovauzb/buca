@@ -93,7 +93,6 @@ public class ArcadeUINavigator : MonoBehaviour
             if (IsInsideReturnPlayerPrompt(b.transform)) continue;
             fresh.Add(b);
         }
-        // Sort top-to-bottom by world-space Y so up/down navigation feels right
         fresh.Sort((a, b) =>
             ((RectTransform)b.transform).position.y.CompareTo(
                 ((RectTransform)a.transform).position.y));
@@ -173,12 +172,13 @@ public class ArcadeUINavigator : MonoBehaviour
         // 0.5 → above 0.5 (or vice-versa). Continuous holding does NOT
         // auto-repeat — that prevented users from cleanly landing on a
         // mid-list option like LEVELS without skipping past it.
-        float vertical = ArcadeInputAdapter.GetStick().y;
-        if (Input.GetKey(KeyCode.UpArrow))   vertical =  1f;
-        if (Input.GetKey(KeyCode.DownArrow)) vertical = -1f;
+        Vector2 stick = ArcadeInputAdapter.GetStick();
+        float axis = stick.y;
+        if (Input.GetKey(KeyCode.UpArrow)) axis = 1f;
+        if (Input.GetKey(KeyCode.DownArrow)) axis = -1f;
 
-        bool vertUp   = vertical >  0.5f;
-        bool vertDown = vertical < -0.5f;
+        bool vertUp = axis > 0.5f;
+        bool vertDown = axis < -0.5f;
 
         if (vertUp && !_vertWasUp)
         {

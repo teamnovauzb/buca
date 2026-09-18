@@ -368,7 +368,10 @@ public class BucaSetupHelper : MonoBehaviour
         }
 
         levelManager.starImages = imgs;
-        Debug.Log("[BucaSetupHelper] ✔ StarRating UI created and assigned to LevelManager.starImages");
+        // Ratings still exist for score logic, but the old gameplay HUD strip
+        // is deliberately hidden; the top-right space belongs to the timer.
+        container.SetActive(false);
+        Debug.Log("[BucaSetupHelper] ✔ StarRating data assigned; gameplay HUD strip hidden");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -1090,7 +1093,7 @@ public class BucaSetupHelper : MonoBehaviour
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 13) Circular timer display beneath the top-right Restart control
+    // 13) 3D cue-ball timer in the former top-right Restart position
     // ═══════════════════════════════════════════════════════════
     [ContextMenu("13. Spawn Timer Display")]
     public void SpawnTimerDisplay()
@@ -1102,17 +1105,15 @@ public class BucaSetupHelper : MonoBehaviour
         var rootGO = new GameObject("TimerDisplay", typeof(RectTransform));
         rootGO.transform.SetParent(gameHud.transform, false);
         var rrt = (RectTransform)rootGO.transform;
-        // Match QuickRestartHint's exact centre x (-32 - 360/2 = -212)
-        // and sit directly beneath it. TimerDisplay reinforces this layout at
-        // runtime for older scenes as well.
+        // The former Restart button was centred at x=-212. TimerDisplay
+        // reinforces this larger position at runtime for older scenes too.
         rrt.anchorMin = new Vector2(1f, 1f);
         rrt.anchorMax = new Vector2(1f, 1f);
         rrt.pivot = new Vector2(0.5f, 0.5f);
-        rrt.anchoredPosition = new Vector2(-212f, -168f);
-        rrt.sizeDelta = new Vector2(96f, 96f);
+        rrt.anchoredPosition = new Vector2(-212f, -108f);
+        rrt.sizeDelta = new Vector2(164f, 164f);
 
-        // TimerDisplay builds the circular disc and radial ring around this
-        // centered number at runtime.
+        // TimerDisplay renders a real 3D cue ball and world-space digits here.
         var textGO = new GameObject("TimerText", typeof(RectTransform));
         textGO.transform.SetParent(rootGO.transform, false);
         var trt = (RectTransform)textGO.transform;
@@ -1135,7 +1136,7 @@ public class BucaSetupHelper : MonoBehaviour
         td.timerText = tmp;
 
         levelManager.timerDisplay = td;
-        Debug.Log("[BucaSetupHelper] ✔ Circular TimerDisplay created and assigned to LevelManager.timerDisplay");
+        Debug.Log("[BucaSetupHelper] ✔ 3D cue-ball TimerDisplay created and assigned to LevelManager.timerDisplay");
     }
 
     // ═══════════════════════════════════════════════════════════

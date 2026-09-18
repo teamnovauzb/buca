@@ -470,6 +470,17 @@ public class LeaderboardPanel : MonoBehaviour
         // callback. Cancel the in-flight routine first and chain the new one.
         if (_isAnimating)
         {
+            // A duplicate leaderboard request must not dismiss TIME IS OVER
+            // before the player acknowledges it. Keep the current presentation
+            // and notify both callers only after the eventual button press.
+            if (string.Equals(_outcomeMessage, "TIME IS OVER", StringComparison.Ordinal))
+            {
+                Action previous = _onFinished;
+                _onFinished = () => { previous?.Invoke(); onFinished?.Invoke(); };
+                Debug.LogWarning("[LeaderboardPanel] Ignoring duplicate request while TIME IS OVER awaits input.");
+                return;
+            }
+
             Debug.LogWarning("[LeaderboardPanel] Show() called while already showing — " +
                              "cancelling current animation. Previous onFinished WILL fire so " +
                              "the original caller's flow doesn't deadlock.");
@@ -511,6 +522,18 @@ public class LeaderboardPanel : MonoBehaviour
             && outcome.IndexOf("TIME", StringComparison.OrdinalIgnoreCase) >= 0)
             return "TIME IS OVER";
         return "YOU LOST";
+    }
+
+    static bool AnyResultButtonHeld()
+    {
+        return ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Black)
+            || ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Red)
+            || ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Green)
+            || ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Yellow)
+            || ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Blue)
+            || ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Purple)
+            || ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.White)
+            || Input.anyKey;
     }
 
     void PopulateOutcomeGolfCard()
@@ -696,6 +719,9 @@ public class LeaderboardPanel : MonoBehaviour
                 hintColor.a = 1f;
                 continueHintText.color = hintColor;
             }
+
+            // Do not treat a button held during the reveal as acknowledgement.
+            while (AnyResultButtonHeld()) yield return null;
 
             // Require a new action after the completed reveal. Orange remains
             // reserved for Luxodd's system/help overlay; White is accepted as a

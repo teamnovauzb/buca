@@ -32,9 +32,12 @@ public sealed class PremiumFailureConsole3D : MonoBehaviour
     GameObject _countdownTag;
     GameObject _continueButtonObject;
     GameObject _endButtonObject;
+    GameObject _cyanSeparator;
     GameObject _secondChanceVisual;
     Transform _secondChancePuck;
     Transform _secondChanceHoleRim;
+    readonly Transform[] _secondChanceAimDots = new Transform[3];
+    readonly Vector3[] _secondChanceAimDotHomeScales = new Vector3[3];
     Vector3 _secondChancePuckHome;
     Vector3 _secondChanceHoleRimHomeScale;
     TextMeshPro[] _titleLayers;
@@ -73,8 +76,8 @@ public sealed class PremiumFailureConsole3D : MonoBehaviour
 
     /// <summary>
     /// Switches the failure console into the one-time Level 1 reward layout.
-    /// The normal End choice disappears and a small illuminated BUCA course,
-    /// puck and flag make the message a game moment rather than plain text.
+    /// A miniature 3D BUCA billiards board makes the extra chance a game
+    /// moment rather than plain text.
     /// </summary>
     public void SetSecondChanceMode(bool enabled)
     {
@@ -82,6 +85,7 @@ public sealed class PremiumFailureConsole3D : MonoBehaviour
         if (!_ready) return;
         if (_continueButtonObject != null) _continueButtonObject.SetActive(true);
         if (_secondChanceVisual != null) _secondChanceVisual.SetActive(enabled);
+        if (_cyanSeparator != null) _cyanSeparator.SetActive(!enabled);
         if (_endButtonObject != null) _endButtonObject.SetActive(true);
         SetEndChoiceCenter(enabled ? -2.25f : -2.03f);
         SetStackActive(_endLayers, true);
@@ -98,6 +102,7 @@ public sealed class PremiumFailureConsole3D : MonoBehaviour
         if (_countdownTag != null) _countdownTag.SetActive(showCountdown && !_secondChanceMode);
         if (showCountdown && !_secondChanceMode) SetCountdown(seconds);
         if (_secondChanceVisual != null) _secondChanceVisual.SetActive(_secondChanceMode);
+        if (_cyanSeparator != null) _cyanSeparator.SetActive(!_secondChanceMode);
         if (_endButtonObject != null) _endButtonObject.SetActive(true);
         SetEndChoiceCenter(_secondChanceMode ? -2.25f : -2.03f);
         SetStackActive(_endLayers, true);
@@ -141,6 +146,14 @@ public sealed class PremiumFailureConsole3D : MonoBehaviour
                 _secondChanceHoleRimHomeScale.x * pulse,
                 _secondChanceHoleRimHomeScale.y,
                 _secondChanceHoleRimHomeScale.z * pulse);
+        }
+        for (int i = 0; i < _secondChanceAimDots.Length; i++)
+        {
+            if (_secondChanceAimDots[i] == null) continue;
+            float pulse = 0.82f + 0.24f * (0.5f + 0.5f
+                * Mathf.Sin(time * 5.4f - i * 0.62f));
+            _secondChanceAimDots[i].localScale =
+                _secondChanceAimDotHomeScales[i] * pulse;
         }
     }
 
@@ -274,7 +287,7 @@ public sealed class PremiumFailureConsole3D : MonoBehaviour
         _endButtonObject = CreateBox("End Game Button", 7.45f, 1.02f, 0.38f, 0.13f,
             new Vector3(0f, -2.03f, -0.52f), burgundy);
 
-        CreateBox("Cyan Separator", 7.78f, 0.065f, 0.15f, 0.026f,
+        _cyanSeparator = CreateBox("Cyan Separator", 7.78f, 0.065f, 0.15f, 0.026f,
             new Vector3(0f, 0.15f, -0.48f), cyan);
         CreateBox("Gold Bottom Rail", 7.78f, 0.065f, 0.15f, 0.026f,
             new Vector3(0f, -2.82f, -0.48f), gold);
@@ -299,10 +312,10 @@ public sealed class PremiumFailureConsole3D : MonoBehaviour
         CreateBox("Title Depth Accent", 7.25f, 0.05f, 0.10f, 0.02f,
             new Vector3(0f, 1.18f, -0.48f), coral);
 
-        BuildSecondChanceVisual(gold, black, cyan);
+        BuildSecondChanceVisual(black);
     }
 
-    void BuildSecondChanceVisual(Material gold, Material black, Material cyan)
+    void BuildSecondChanceVisual(Material black)
     {
         _secondChanceVisual = new GameObject("Level 1 Second Chance Mini BUCA Board")
         {
@@ -311,70 +324,79 @@ public sealed class PremiumFailureConsole3D : MonoBehaviour
         };
         _secondChanceVisual.transform.SetParent(_board, false);
 
-        // The reward contains a small copy of the real BUCA playfield. Its wood
-        // lane, cyan rails, V-shaped bumpers and single target make it instantly
-        // recognizable without incorrectly presenting the game as golf.
+        // A compact, genuinely 3D miniature of the BUCA playfield. It uses the
+        // selected teal-felt / walnut arena design, not a golf illustration.
         CreateTextStack("BUCA Mark", "BUCA",
             new Vector3(-2.35f, 0.53f, -0.79f), 3.05f, 0.72f,
             Cyan, 3.15f, _secondChanceVisual.transform);
 
         Material miniWood = CreateWoodMaterial("Mini BUCA Walnut",
-            new Color(0.055f, 0.020f, 0.010f, 1f),
-            new Color(0.28f, 0.105f, 0.040f, 1f), 0.54f);
+            new Color(0.095f, 0.038f, 0.017f, 1f),
+            new Color(0.38f, 0.16f, 0.060f, 1f), 0.60f);
+        Material miniFelt = CreateLitMaterial("Mini BUCA Teal Felt",
+            new Color(0.015f, 0.28f, 0.31f, 1f), 0.02f, 0.24f,
+            new Color(0.001f, 0.035f, 0.039f, 1f), false);
+        Material miniCyan = CreateLitMaterial("Mini BUCA Bright Cyan",
+            new Color(0.035f, 0.72f, 0.90f, 1f), 0.34f, 0.84f,
+            new Color(0.012f, 0.28f, 0.38f, 1f), false);
         Material bumperMaterial = CreateLitMaterial("Mini BUCA Bumper",
             new Color(0.74f, 0.94f, 0.98f, 1f), 0.18f, 0.86f,
             new Color(0.015f, 0.17f, 0.21f, 1f));
 
         const float laneX = 1.55f;
         const float laneY = 0.50f;
-        CreateBox("Mini BUCA Wood Playfield", 3.10f, 1.38f, 0.22f, 0.11f,
+        CreateBox("Mini BUCA Walnut Frame", 3.10f, 1.38f, 0.22f, 0.11f,
             new Vector3(laneX, laneY, -0.69f), miniWood, _secondChanceVisual.transform);
+        CreateBox("Mini BUCA Teal Felt", 2.73f, 1.04f, 0.085f, 0.025f,
+            new Vector3(laneX, laneY, -0.82f), miniFelt, _secondChanceVisual.transform);
         CreateBox("Mini BUCA Left Gutter", 0.13f, 1.18f, 0.12f, 0.035f,
             new Vector3(0.13f, laneY, -0.85f), black, _secondChanceVisual.transform);
         CreateBox("Mini BUCA Right Gutter", 0.13f, 1.18f, 0.12f, 0.035f,
             new Vector3(2.97f, laneY, -0.85f), black, _secondChanceVisual.transform);
         CreateBox("Mini BUCA Left Cyan Rail", 0.060f, 1.10f, 0.10f, 0.020f,
-            new Vector3(0.27f, laneY, -0.94f), cyan, _secondChanceVisual.transform);
+            new Vector3(0.27f, laneY, -0.94f), miniCyan, _secondChanceVisual.transform);
         CreateBox("Mini BUCA Right Cyan Rail", 0.060f, 1.10f, 0.10f, 0.020f,
-            new Vector3(2.83f, laneY, -0.94f), cyan, _secondChanceVisual.transform);
-        CreateBox("Mini BUCA Top Cyan Rail", 2.62f, 0.060f, 0.10f, 0.020f,
-            new Vector3(laneX, 1.12f, -0.94f), cyan, _secondChanceVisual.transform);
-        CreateBox("Mini BUCA Bottom Gold Rail", 2.62f, 0.050f, 0.09f, 0.018f,
-            new Vector3(laneX, -0.12f, -0.93f), gold, _secondChanceVisual.transform);
+            new Vector3(2.83f, laneY, -0.94f), miniCyan, _secondChanceVisual.transform);
+        CreateBox("Mini BUCA Top Walnut Cushion", 2.70f, 0.100f, 0.12f, 0.035f,
+            new Vector3(laneX, 1.12f, -0.94f), miniWood, _secondChanceVisual.transform);
+        CreateBox("Mini BUCA Bottom Walnut Cushion", 2.70f, 0.100f, 0.12f, 0.035f,
+            new Vector3(laneX, -0.12f, -0.94f), miniWood, _secondChanceVisual.transform);
 
-        Material puckMaterial = CreateLitMaterial("Second Chance Ivory Puck",
-            new Color(0.94f, 0.97f, 1f, 1f), 0.28f, 0.93f,
+        Material ballMaterial = CreateLitMaterial("Second Chance Ivory Ball",
+            new Color(0.96f, 0.98f, 1f, 1f), 0.18f, 0.97f,
             new Color(0.05f, 0.10f, 0.12f, 1f));
-        _secondChancePuck = CreatePrimitive("Bonus Puck", PrimitiveType.Sphere,
-            new Vector3(laneX, 0.02f, -1.02f), new Vector3(0.27f, 0.27f, 0.13f),
-            Quaternion.identity, puckMaterial, _secondChanceVisual.transform).transform;
+        _secondChancePuck = CreatePrimitive("Bonus Billiard Ball", PrimitiveType.Sphere,
+            new Vector3(laneX, 0.02f, -1.07f), new Vector3(0.34f, 0.34f, 0.34f),
+            Quaternion.identity, ballMaterial, _secondChanceVisual.transform).transform;
         _secondChancePuckHome = _secondChancePuck.localPosition;
 
         _secondChanceHoleRim = CreatePrimitive("BUCA Target Rim", PrimitiveType.Cylinder,
-            new Vector3(laneX, 0.91f, -0.99f), new Vector3(0.30f, 0.050f, 0.30f),
-            Quaternion.Euler(90f, 0f, 0f), cyan, _secondChanceVisual.transform).transform;
+            new Vector3(laneX, 0.91f, -0.99f), new Vector3(0.38f, 0.050f, 0.38f),
+            Quaternion.Euler(90f, 0f, 0f), miniCyan, _secondChanceVisual.transform).transform;
         _secondChanceHoleRimHomeScale = _secondChanceHoleRim.localScale;
         CreatePrimitive("BUCA Target", PrimitiveType.Cylinder,
-            new Vector3(laneX, 0.91f, -1.05f), new Vector3(0.20f, 0.06f, 0.20f),
+            new Vector3(laneX, 0.91f, -1.05f), new Vector3(0.27f, 0.06f, 0.27f),
             Quaternion.Euler(90f, 0f, 0f), black, _secondChanceVisual.transform);
 
         GameObject leftBumper = CreateBox("Mini BUCA Left V Bumper",
-            0.70f, 0.075f, 0.10f, 0.025f,
+            0.78f, 0.090f, 0.10f, 0.030f,
             new Vector3(1.26f, 0.64f, -1.01f), bumperMaterial,
             _secondChanceVisual.transform);
         leftBumper.transform.localRotation = Quaternion.Euler(0f, 0f, -28f);
         GameObject rightBumper = CreateBox("Mini BUCA Right V Bumper",
-            0.70f, 0.075f, 0.10f, 0.025f,
+            0.78f, 0.090f, 0.10f, 0.030f,
             new Vector3(1.84f, 0.64f, -1.01f), bumperMaterial,
             _secondChanceVisual.transform);
         rightBumper.transform.localRotation = Quaternion.Euler(0f, 0f, 28f);
 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < _secondChanceAimDots.Length; i++)
         {
-            float y = 0.30f + i * 0.105f;
-            CreatePrimitive("Mini BUCA Aim Dot " + (i + 1), PrimitiveType.Sphere,
-                new Vector3(laneX, y, -1.04f), new Vector3(0.045f, 0.045f, 0.025f),
-                Quaternion.identity, cyan, _secondChanceVisual.transform);
+            float y = 0.31f + i * 0.15f;
+            _secondChanceAimDots[i] = CreatePrimitive("Mini BUCA Aim Dot " + (i + 1),
+                PrimitiveType.Sphere, new Vector3(laneX, y, -1.04f),
+                new Vector3(0.060f, 0.060f, 0.045f), Quaternion.identity,
+                miniCyan, _secondChanceVisual.transform).transform;
+            _secondChanceAimDotHomeScales[i] = _secondChanceAimDots[i].localScale;
         }
 
         _secondChanceSubtitleLayers = CreateCleanTextStack(
