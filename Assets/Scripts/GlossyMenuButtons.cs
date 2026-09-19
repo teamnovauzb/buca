@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
@@ -126,3 +127,4 @@ public static class GlossyMenuButtons
         return null;
     }
 }
+#endif

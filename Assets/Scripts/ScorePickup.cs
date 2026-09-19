@@ -64,9 +64,6 @@ public class ScorePickup : MonoBehaviour
         var col = GetComponent<Collider>();
         if (col != null) col.enabled = false;
 
-        var mr = GetComponent<Renderer>();
-        Material matInstance = mr != null ? mr.material : null;
-
         float t = 0f;
         float duration = Mathf.Max(0.01f, popDuration);
         while (t < duration)
@@ -75,12 +72,6 @@ public class ScorePickup : MonoBehaviour
             float k = Mathf.Clamp01(t / duration);
             float s = Mathf.Lerp(1f, popScale, 1f - (1f - k) * (1f - k)); // easeOutQuad
             transform.localScale = _baseScale * s;
-            if (matInstance != null && matInstance.HasProperty("_BaseColor"))
-            {
-                var c = matInstance.GetColor("_BaseColor");
-                c.a = 1f - k;
-                matInstance.SetColor("_BaseColor", c);
-            }
             yield return null;
         }
         Destroy(gameObject);

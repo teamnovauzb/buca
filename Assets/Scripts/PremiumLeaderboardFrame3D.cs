@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -496,3 +497,4 @@ public sealed class PremiumLeaderboardFrame3D : MonoBehaviour
             if (_textures[i] != null) Destroy(_textures[i]);
     }
 }
+#endif

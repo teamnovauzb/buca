@@ -49,8 +49,8 @@ public class LevelManager : MonoBehaviour
     public LeaderboardPanel leaderboardPanel;
 
     [Header("Shot rules")]
-    [Tooltip("BUCA life mode: a missed shot removes one visible heart. Levels 1-24 use three hearts; Levels 25-30 use four.")]
-    public bool useShotLives = true;
+    [Tooltip("Optional legacy mode where a missed shot removes a heart. Normal BUCA play keeps this disabled so the timer is the completion limit and extra strokes only lower score/stars.")]
+    public bool useShotLives = false;
 
     [Header("Legacy lives system (used only when Use Shot Lives is enabled)")]
     [Tooltip("Fallback lives count when a level has no LevelSettings. Set to the campaign maximum so the HUD has enough heart slots.")]
@@ -60,8 +60,8 @@ public class LevelManager : MonoBehaviour
     public TMP_Text livesDisplay;
     [Tooltip("Heart icons (preferred over the text). Wired by 'RealBuca ▸ Add Lives System'.")]
     public UnityEngine.UI.Image[] lifeIcons;
-    public Color lifeFullColor = new Color(1f, 0.19f, 0.24f, 1f);   // vivid red heart
-    public Color lifeEmptyColor = new Color(1f, 0.19f, 0.24f, 0.16f); // faint red (life lost)
+    public Color lifeFullColor = new Color(1f, 0.22f, 0.29f, 1f);   // vivid coral-red heart
+    public Color lifeEmptyColor = new Color(1f, 0.22f, 0.29f, 0.10f); // outlined by the authored prefab
     [Tooltip("Shown when lives reach 0. Wired by 'RealBuca ▸ Add Lives System'.")]
     public LevelFailedPanel levelFailedPanel;
     [Tooltip("Show the leaderboard panel before respawning on deadly-wall death.")]
@@ -88,8 +88,9 @@ public class LevelManager : MonoBehaviour
     [Header("Combo text (optional — floating HOLE IN ONE / PERFECT / NICE SAVE)")]
     public FloatingComboText comboText;
 
-    [Header("World-space 3D celebration")]
-    [Tooltip("True 3D hole-in-one reward. Auto-created at runtime for existing scenes.")]
+    [Header("Prebuilt presentation controllers")]
+    [SerializeField] ObstacleIntroController _obstacleIntro;
+    [Tooltip("True 3D hole-in-one reward authored as a prefab in the Game scene.")]
     public HoleInOneCelebration3D holeInOneCelebration;
 
     [Header("Screen edge neon (optional)")]
@@ -178,7 +179,6 @@ public class LevelManager : MonoBehaviour
     bool _timerActive;
     bool _timeUpTriggered;
     bool _levelOneSecondChanceUsed;
-    ObstacleIntroController _obstacleIntro;
     bool _obstacleIntroActive;
     float _quickRestartHoldElapsed;
     bool _quickRestartConsumedForCurrentHold;
@@ -339,24 +339,14 @@ public class LevelManager : MonoBehaviour
 
         ApplyPremiumLevelTitleStyle();
 
-        // Hearts are part of the active game HUD. Force this on at runtime so
-        // older scene serialization cannot silently keep the life row hidden.
-        useShotLives = true;
-        ApplyLivesHudLayout();
+        // Respect the authored shot rule. Normal BUCA play disables hearts so
+        // extra low-power adjustment shots affect score/stars, not completion.
         UpdateLivesDisplay();
 
-        // Runtime-built and self-wiring: old Game scenes do not need a manual
-        // prefab reference or an editor setup pass to receive obstacle intros.
-        _obstacleIntro = GetComponent<ObstacleIntroController>();
         if (_obstacleIntro == null)
-            _obstacleIntro = gameObject.AddComponent<ObstacleIntroController>();
-
-        // Existing Game scenes need no editor rebuild: install the genuine
-        // world-space celebration once and keep its objects pooled for reuse.
+            Debug.LogError("[LevelManager] Missing prebuilt ObstacleIntroController reference.", this);
         if (holeInOneCelebration == null)
-            holeInOneCelebration = GetComponent<HoleInOneCelebration3D>();
-        if (holeInOneCelebration == null)
-            holeInOneCelebration = gameObject.AddComponent<HoleInOneCelebration3D>();
+            Debug.LogError("[LevelManager] Missing prebuilt HoleInOneCelebration3D reference.", this);
     }
 
     void Start()
@@ -677,6 +667,24 @@ public class LevelManager : MonoBehaviour
 
         while (!leaderboardFinished) yield return null;
 
+        BucaInGameTransactionController transactions =
+            BucaInGameTransactionController.Instance;
+        if (transactions != null && transactions.PlatformTransactionsExpected
+            && transactions.IsReady)
+        {
+            // Open Luxodd's own Continue transaction directly. The platform
+            // popup owns the Continue/End decision; the game does not insert
+            // a second Continue/Restart selector in front of it.
+            if (transactions.TryShowContinue(
+                _currentIndex + 1, visibleScore,
+                ContinueCurrentLevelWithFreshTimer,
+                () => { }))
+                yield break;
+
+            Debug.LogError("[LevelManager] Prebuilt transaction controller could not start; " +
+                           "falling back to the existing Luxodd bridge.");
+        }
+
         bool decisionFinished = false;
         bool continueSelected = false;
 
@@ -866,38 +874,6 @@ public class LevelManager : MonoBehaviour
             for (int i = 0; i < _currentMaxLives; i++)
                 sb.Append(i < _lives ? "<color=#FF2E5B>♥</color> " : "<color=#FFFFFF30>♥</color> ");
             livesDisplay.text = sb.ToString();
-        }
-    }
-
-    /// <summary>
-    /// Keeps the glossy heart icons directly below the three-row stats column.
-    /// The hearts live on their own screen-space canvas, so anchoring them to
-    /// its top-left corner makes the placement stable at every aspect ratio.
-    /// </summary>
-    void ApplyLivesHudLayout()
-    {
-        if (lifeIcons == null || lifeIcons.Length == 0) return;
-
-        const float startX = 48f;
-        const float topOffset = 300f;
-        const float iconSize = 52f;
-        const float spacing = 62f;
-
-        for (int i = 0; i < lifeIcons.Length; i++)
-        {
-            Image heart = lifeIcons[i];
-            if (heart == null) continue;
-
-            RectTransform rt = heart.rectTransform;
-            rt.anchorMin = new Vector2(0f, 1f);
-            rt.anchorMax = new Vector2(0f, 1f);
-            rt.pivot = new Vector2(0f, 1f);
-            rt.anchoredPosition = new Vector2(startX + i * spacing, -topOffset);
-            rt.sizeDelta = new Vector2(iconSize, iconSize);
-            rt.localScale = Vector3.one;
-
-            heart.preserveAspect = true;
-            heart.raycastTarget = false;
         }
     }
 
@@ -1183,7 +1159,6 @@ public class LevelManager : MonoBehaviour
         _currentInstance = Instantiate(levelPrefabs[index]);
         _currentInstance.name = levelPrefabs[index].name;
         RemoveMisleadingInertDecor(_currentInstance);
-        PreferredRouteBuilder.Install(_currentInstance, _currentIndex + 1);
 
         PlayerPrefs.SetInt(PrefKey, _currentIndex);
         PlayerPrefs.Save();
@@ -1465,11 +1440,23 @@ public class LevelManager : MonoBehaviour
 
         PlayerPrefs.Save();
 
-        // Luxodd: report level completion with score to server.
+        // Luxodd: report ordinary level completion with score to the server.
+        // The final level is deferred to Restart, which must submit the session
+        // result exactly once before asking Luxodd to create a new session.
         if (luxoddBridge != null)
         {
-            Debug.Log($"[LevelManager] Calling luxoddBridge.OnLevelEnd(level={_currentIndex + 1}, score={score.total})");
-            luxoddBridge.OnLevelEnd(_currentIndex, score.total);
+            bool isFinalLevel = levelPrefabs != null
+                && _currentIndex == levelPrefabs.Length - 1;
+            bool platformRestartWillFinalize = isFinalLevel
+                && ((BucaInGameTransactionController.Instance != null
+                     && BucaInGameTransactionController.Instance.PlatformTransactionsExpected)
+                    || luxoddBridge.PlatformTransactionsExpected);
+
+            if (!platformRestartWillFinalize)
+            {
+                Debug.Log($"[LevelManager] Calling luxoddBridge.OnLevelEnd(level={_currentIndex + 1}, score={score.total})");
+                luxoddBridge.OnLevelEnd(_currentIndex, score.total);
+            }
             luxoddBridge.SaveUserState();
         }
         else
@@ -1534,14 +1521,39 @@ public class LevelManager : MonoBehaviour
 
         if (finishedCampaign)
         {
+            BucaInGameTransactionController transactions =
+                BucaInGameTransactionController.Instance;
+
+            if (transactions != null && transactions.PlatformTransactionsExpected
+                && transactions.IsReady)
+            {
+                if (gameCompletePanel != null)
+                {
+                    gameCompletePanel.Show(_campaignTotalStrokes, _campaignTotalPar,
+                        _campaignTotalStars, campaignMaxLevels * 3);
+                    gameCompletePanel.SetLocalActionsVisible(false);
+                }
+
+                _isTransitioning = false;
+                if (transactions.TryShowRestart(
+                    _currentIndex + 1, _campaignTotalScore, () => { }))
+                    yield break;
+
+                Debug.LogError("[LevelManager] Campaign Restart transaction could not start; " +
+                               "falling back to the existing Luxodd bridge.");
+            }
+
             // Platform Restart/End takes priority over the old local loop.
             // Otherwise loopAtEnd silently jumps to level 1 and the backend's
             // enabled Restart transaction never appears.
             if (luxoddBridge != null && luxoddBridge.PlatformTransactionsExpected)
             {
                 if (gameCompletePanel != null)
+                {
                     gameCompletePanel.Show(_campaignTotalStrokes, _campaignTotalPar, _campaignTotalStars,
                         campaignMaxLevels * 3);
+                    gameCompletePanel.SetLocalActionsVisible(false);
+                }
 
                 _isTransitioning = false;
                 luxoddBridge.OnCampaignComplete(
@@ -1819,7 +1831,8 @@ public class LevelManager : MonoBehaviour
     /// <summary>
     /// Visually highlights the current level's Hole_Ring when the puck
     /// is being drawn in by the magnet assist. Scales 1.0..1.25 and
-    /// pulses emission slightly — feels like the hole is "hungry".
+    /// pulses scale slightly — feels like the hole is "hungry". The ring's
+    /// material is fully authored and is never instanced at runtime.
     /// </summary>
     void ApplyHoleAnticipation()
     {
@@ -1831,14 +1844,6 @@ public class LevelManager : MonoBehaviour
         float pulse = 1f + strength * 0.25f * _holeAnticipationPulse;
         ring.localScale = new Vector3(1.15f * pulse, 0.04f, 1.15f * pulse);
 
-        var mr = ring.GetComponent<Renderer>();
-        if (mr == null || mr.material == null) return;
-        if (!mr.material.HasProperty("_EmissionColor")) return;
-        // Boost emission when anticipation is high.
-        Color baseEmission = new Color(3.2f, 2.8f, 1.2f);
-        Color boost = baseEmission * (1f + strength * 1.3f);
-        mr.material.SetColor("_EmissionColor", boost);
-        mr.material.EnableKeyword("_EMISSION");
     }
 
     IEnumerator KickFov(float delta, float duration)
@@ -1984,13 +1989,17 @@ public class LevelManager : MonoBehaviour
     string FormatStrokeHud()
     {
         int par = GetThreeStarStrokesForLevel(_currentIndex);
-        return $"<color=#DDF7FF>STROKES</color><pos=260><color=#FFFFFF>{_shotCount}</color>\n" +
-               $"<color=#DDF7FF>PAR</color><pos=260><color=#FFD633>{par}</color>";
+        int toPar = _shotCount - par;
+        string relation = _shotCount == 0 ? "—" : FormatToPar(toPar);
+        string relationColor = toPar < 0 ? "#5CFFB0" : toPar == 0 ? "#64E9FF" : "#FF637D";
+        return $"<color=#B8E3F0>STROKES</color><pos=150><color=#FFFFFF>{_shotCount}</color>\n" +
+               $"<color=#B8E3F0>PAR</color><pos=150><color=#FFD95A>{par}</color>\n" +
+               $"<color=#B8E3F0>IF SUNK</color><pos=150><color={relationColor}>{relation}</color>";
     }
 
     static string FormatScoreHud(int score)
     {
-        return $"<color=#DDF7FF>SCORE</color><pos=260><color=#00DFFF>{score:N0}</color>";
+        return $"<color=#B8E3F0>POINTS</color><pos=150><color=#2DE2FF>{score:N0}</color>";
     }
 
     static Color GetGolfResultColor(int strokesToPar)
@@ -2110,14 +2119,6 @@ public class LevelManager : MonoBehaviour
         winRing.transform.localScale = new Vector3(0.2f, 0.01f, 0.2f);
         winRing.SetActive(true);
 
-        Material mat = winRingRenderer != null ? winRingRenderer.material : null;
-        Color baseC = new Color(1f, 0.95f, 0.4f, 1f);
-        if (mat != null)
-        {
-            if (mat.HasProperty("_BaseColor")) baseC = mat.GetColor("_BaseColor");
-            else if (mat.HasProperty("_Color")) baseC = mat.GetColor("_Color");
-        }
-
         float dur = 0.6f, t = 0f;
         while (t < dur)
         {
@@ -2125,12 +2126,6 @@ public class LevelManager : MonoBehaviour
             float k = t / dur;
             float s = Mathf.Lerp(0.2f, 4.5f, k);
             winRing.transform.localScale = new Vector3(s, 0.01f, s);
-            if (mat != null)
-            {
-                var c = new Color(baseC.r, baseC.g, baseC.b, 1f - k);
-                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
-                if (mat.HasProperty("_Color"))     mat.SetColor("_Color", c);
-            }
             yield return null;
         }
         winRing.SetActive(false);

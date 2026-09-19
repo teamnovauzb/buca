@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -170,3 +171,4 @@ public sealed class PremiumStatsDisplay3D : MonoBehaviour
         }
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System;
 using System.Collections;
 using UnityEngine;
@@ -145,3 +146,4 @@ public sealed class ResultBackdropBlur : MonoBehaviour
         _material = null;
     }
 }
+#endif

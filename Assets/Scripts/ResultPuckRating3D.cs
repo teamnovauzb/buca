@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -506,3 +507,4 @@ public sealed class ResultPuckRating3D : MonoBehaviour
         if (_stageRoot != null) Destroy(_stageRoot);
     }
 }
+#endif

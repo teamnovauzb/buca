@@ -16,26 +16,16 @@ public class DisappearingWall : MonoBehaviour
     public float offDuration = 1.4f;
     [Tooltip("Phase offset in seconds — start later in the cycle.")]
     public float phase = 0f;
-    [Tooltip("Fade-out duration. The collider toggles instantly at the midpoint of the fade.")]
+    [Tooltip("Transition gap between the solid and hidden phases.")]
     public float fadeDuration = 0.15f;
 
     Renderer _renderer;
     Collider _collider;
-    MaterialPropertyBlock _mpb;
-    Color _baseColor = Color.white;
-    string _colorProp = "_BaseColor";
 
     void Awake()
     {
         _renderer = GetComponent<Renderer>();
         _collider = GetComponent<Collider>();
-        _mpb = new MaterialPropertyBlock();
-        if (_renderer != null && _renderer.sharedMaterial != null)
-        {
-            var mat = _renderer.sharedMaterial;
-            if (mat.HasProperty("_BaseColor")) { _colorProp = "_BaseColor"; _baseColor = mat.GetColor("_BaseColor"); }
-            else if (mat.HasProperty("_Color")) { _colorProp = "_Color"; _baseColor = mat.GetColor("_Color"); }
-        }
     }
 
     void Update()
@@ -53,11 +43,9 @@ public class DisappearingWall : MonoBehaviour
         //   [...end]                                          → fading in
         float fadeInStart = on + fade + off;
         bool solid;
-        float alpha;
-        if (t < on)                                 { solid = true;  alpha = 1f; }
-        else if (t < on + fade)                     { solid = false; alpha = 1f - (t - on) / fade; }
-        else if (t < fadeInStart)                   { solid = false; alpha = 0f; }
-        else                                        { solid = true;  alpha = (t - fadeInStart) / fade; }
+        if (t < on)                                 solid = true;
+        else if (t < fadeInStart)                   solid = false;
+        else                                        solid = true;
 
         // Audio: detect solid↔gone transitions and play vanish/reappear.
         // Skip the first frame to avoid a spurious SFX when the wall happens
@@ -78,14 +66,7 @@ public class DisappearingWall : MonoBehaviour
         }
 
         if (_collider != null) _collider.enabled = solid;
-        if (_renderer != null)
-        {
-            _renderer.enabled = alpha > 0.02f;
-            _renderer.GetPropertyBlock(_mpb);
-            var c = _baseColor; c.a = alpha;
-            _mpb.SetColor(_colorProp, c);
-            _renderer.SetPropertyBlock(_mpb);
-        }
+        if (_renderer != null) _renderer.enabled = solid;
     }
 
     bool _wasSolid = true;

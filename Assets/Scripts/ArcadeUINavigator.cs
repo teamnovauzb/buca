@@ -7,9 +7,9 @@ using UnityEngine.EventSystems;
 /// has Buttons. Joystick up/down (or up/down arrows) cycles through the
 /// selectables, BLACK button (or Enter) confirms.
 ///
-/// Visible highlight strategy: every frame we ENFORCE that the focused
-/// button has both an explicit scale bump AND a pulsing colored outline
-/// drawn behind it. This makes the focus state unambiguous regardless
+/// Visible highlight strategy: the focused button receives a restrained,
+/// stable scale and a pulsing colored outline drawn behind it. This makes
+/// the focus state unambiguous regardless
 /// of what the button's own ColorBlock is set to (default Unity tints
 /// are nearly invisible on already-bright buttons).
 /// </summary>
@@ -24,7 +24,7 @@ public class ArcadeUINavigator : MonoBehaviour
 
     [Header("Visual feedback")]
     [Tooltip("Scale applied to the currently selected button.")]
-    public float selectedScale = 1.15f;
+    public float selectedScale = 1.03f;
     [Tooltip("Outline color drawn behind the selected button. Pulses alpha.")]
     public Color highlightOutlineColor = new Color(1f, 0.85f, 0.30f, 1f);
     [Tooltip("Thickness of the highlight outline (px).")]
@@ -35,8 +35,10 @@ public class ArcadeUINavigator : MonoBehaviour
     int _currentIndex;
     float _nextMoveTime;
     Selectable _lastHighlighted;
-    GameObject _outlineGO;
-    Image _outlineImg;
+    [Header("Prebuilt focus outline")]
+    [Tooltip("Prebuilt outline object. It may be reparented while navigating, but is never created at runtime.")]
+    [SerializeField] GameObject _outlineGO;
+    [SerializeField] Image _outlineImg;
 
     // Edge-detection state — one tap = one move. Without this, holding the
     // joystick / arrow key for 0.4s would auto-repeat past intermediate
@@ -284,38 +286,43 @@ public class ArcadeUINavigator : MonoBehaviour
 
         _lastHighlighted = current;
 
-        // Reposition outline immediately under the new selection so it
-        // doesn't briefly draw at the old button's position before the
-        // per-frame ApplyHighlightVisuals runs.
+        current.transform.localScale = Vector3.one * selectedScale;
+        PositionOutline();
         ApplyHighlightVisuals();
+    }
+
+    void PositionOutline()
+    {
+        if (_lastHighlighted == null || _outlineGO == null || _outlineImg == null) return;
+
+        _outlineGO.SetActive(true);
+        var srcRT = (RectTransform)_lastHighlighted.transform;
+        var outRT = (RectTransform)_outlineGO.transform;
+        outRT.SetParent(srcRT.parent, false);
+        outRT.SetSiblingIndex(srcRT.GetSiblingIndex());
+        outRT.anchorMin = srcRT.anchorMin;
+        outRT.anchorMax = srcRT.anchorMax;
+        outRT.pivot = srcRT.pivot;
+        outRT.anchoredPosition = srcRT.anchoredPosition;
+        outRT.sizeDelta = srcRT.sizeDelta + Vector2.one * highlightOutlinePadding * 2f;
+        outRT.localScale = Vector3.one * selectedScale;
     }
 
     void ApplyHighlightVisuals()
     {
         if (_lastHighlighted == null) return;
 
-        // Scale bump on the selected button
-        _lastHighlighted.transform.localScale = Vector3.one * selectedScale;
-
-        // Move + size the outline image to wrap the selected button
+        // Only alpha animates per frame. Transform parenting, sizing, and the
+        // button scale are applied once when the selection actually changes.
         if (_outlineGO != null && _outlineImg != null)
         {
             _outlineGO.SetActive(true);
+            // Follow the one-time entrance slide without reparenting or
+            // recomputing the layout every frame.
             var srcRT = (RectTransform)_lastHighlighted.transform;
             var outRT = (RectTransform)_outlineGO.transform;
-
-            outRT.SetParent(srcRT.parent, false);
-            // Render the outline behind the selected button
-            outRT.SetSiblingIndex(srcRT.GetSiblingIndex());
-
-            // Match the button's rect, expanded by `highlightOutlinePadding`
-            outRT.anchorMin = srcRT.anchorMin;
-            outRT.anchorMax = srcRT.anchorMax;
-            outRT.pivot = srcRT.pivot;
-            outRT.anchoredPosition = srcRT.anchoredPosition;
-            outRT.sizeDelta = srcRT.sizeDelta + Vector2.one * highlightOutlinePadding * 2f;
-            outRT.localScale = Vector3.one * selectedScale;
-
+            if (outRT.parent == srcRT.parent)
+                outRT.anchoredPosition = srcRT.anchoredPosition;
             // Pulse alpha 0.35 → 1.0 at pulseHz
             float p = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * Mathf.PI * pulseHz);
             var c = highlightOutlineColor;
@@ -326,14 +333,9 @@ public class ArcadeUINavigator : MonoBehaviour
 
     void EnsureOutline()
     {
-        if (_outlineGO != null) return;
-        _outlineGO = new GameObject("ArcadeNavOutline", typeof(RectTransform));
-        _outlineImg = _outlineGO.AddComponent<Image>();
-        _outlineImg.sprite = BuildHollowRingSprite();
-        _outlineImg.type = Image.Type.Sliced;
-        _outlineImg.raycastTarget = false;
-        _outlineImg.color = highlightOutlineColor;
-        _outlineGO.SetActive(false);
+        if (_outlineGO != null && _outlineImg != null) return;
+        Debug.LogError("[ArcadeUINavigator] Prebuilt focus outline is not assigned. " +
+                       "Run RealBuca/Prebuild/Step 1 - Core Runtime Objects in the Unity Editor.", this);
     }
 
     void OnDisable()
@@ -345,45 +347,4 @@ public class ArcadeUINavigator : MonoBehaviour
         if (_outlineGO != null) _outlineGO.SetActive(false);
     }
 
-    /// <summary>
-    /// Procedural hollow rounded-rectangle ring sprite — drawn solid on
-    /// the perimeter, transparent in the middle. 9-sliced so it scales
-    /// to any rect without distortion.
-    /// </summary>
-    static Sprite BuildHollowRingSprite()
-    {
-        const int size = 64, corner = 16, thickness = 6;
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        for (int y = 0; y < size; y++)
-        for (int x = 0; x < size; x++)
-        {
-            // Distance to nearest edge
-            float dx = Mathf.Min(x, size - 1 - x);
-            float dy = Mathf.Min(y, size - 1 - y);
-            float d  = Mathf.Min(dx, dy);
-
-            // Corner rounding — only round the actual corner pixels
-            bool inCorner = (x < corner && y < corner)
-                         || (x < corner && y >= size - corner)
-                         || (x >= size - corner && y < corner)
-                         || (x >= size - corner && y >= size - corner);
-            if (inCorner)
-            {
-                float cx = x < corner ? corner : size - 1 - corner;
-                float cy = y < corner ? corner : size - 1 - corner;
-                float dist = Mathf.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
-                d = Mathf.Min(d, corner - dist);
-            }
-
-            // Hollow ring: alpha=1 only inside the perimeter band
-            float a = 0f;
-            if (d >= 0f && d <= thickness)
-                a = 1f - Mathf.Abs(d - thickness * 0.5f) / (thickness * 0.5f);
-            tex.SetPixel(x, y, new Color(1f, 1f, 1f, Mathf.Clamp01(a)));
-        }
-        tex.Apply();
-        tex.filterMode = FilterMode.Bilinear;
-        return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f,
-            0, SpriteMeshType.FullRect, new Vector4(corner, corner, corner, corner));
-    }
 }

@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -837,3 +838,4 @@ public sealed class KidMechanicPreview3D : MonoBehaviour
         _textures.Clear();
     }
 }
+#endif

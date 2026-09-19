@@ -4,8 +4,7 @@ using UnityEngine;
 /// Buca!-style drag-back slingshot puck.
 /// Mouse down anywhere → start aiming. Drag → set direction/power. Release → launch.
 /// Gameplay physics objects are pre-built by RealBuca/Setup Game Scene. The
-/// lightweight transparent post-bounce coverage renderer is created once at
-/// runtime when an older scene does not already contain one.
+/// transparent post-bounce coverage renderer is authored in the Game scene.
 /// </summary>
 [RequireComponent(typeof(Rigidbody), typeof(SphereCollider))]
 public class PuckController : MonoBehaviour
@@ -64,8 +63,7 @@ public class PuckController : MonoBehaviour
     [Header("Trajectory preview (optional)")]
     [Tooltip("Optional LineRenderer for the 2-bounce predicted path. Disable in scene if not wanted.")]
     public LineRenderer previewLine;
-    [Tooltip("Optional transparent uncertainty corridor drawn only after the first rebound. " +
-             "It is created automatically when left unassigned.")]
+    [Tooltip("Prebuilt transparent uncertainty corridor drawn only after the first rebound.")]
     public LineRenderer previewCoverageLine;
     [Tooltip("Width of the possible-path area immediately after the first rebound.")]
     [Range(0.18f, 0.6f)] public float previewCoverageStartWidth = 0.28f;
@@ -136,7 +134,11 @@ public class PuckController : MonoBehaviour
             previewLine.enabled = false;
             previewLine.useWorldSpace = true;
             previewLine.positionCount = 0;
-            EnsurePreviewCoverageLine();
+        }
+        if (previewCoverageLine != null)
+        {
+            previewCoverageLine.enabled = false;
+            previewCoverageLine.positionCount = 0;
         }
         if (powerArc != null)
         {
@@ -349,9 +351,6 @@ public class PuckController : MonoBehaviour
     readonly RaycastHit[] _previewHits = new RaycastHit[128];
     readonly System.Collections.Generic.List<Vector3> _previewPoints
         = new System.Collections.Generic.List<Vector3>(192);
-    Material _previewCoverageMaterial;
-    float _coverageWidthStartCache = -1f;
-    float _coverageWidthEndCache = -1f;
     const float PreviewSurfaceSeparation = 0.01f;
     const float PreviewCoincidentHitTolerance = 0.01f;
 
@@ -900,151 +899,19 @@ public class PuckController : MonoBehaviour
             if (terminateTrajectory || bounceCount > previewBounces) break;
         }
 
-        // Up to the first contact the guide is a precise promise. Rebounds are
-        // less deterministic, so use a widening transparent possible-path
-        // area instead of a misleading pixel-perfect centre line.
-        int exactPointCount = firstBouncePointIndex >= 0
-            ? firstBouncePointIndex + 1
-            : points.Count;
+        // Keep one clean centre-line through authored rebound predictions. The
+        // old widening post-bounce coverage strip could expand into a large
+        // opaque wedge and hide the board.
+        int exactPointCount = points.Count;
         previewLine.positionCount = exactPointCount;
         for (int i = 0; i < exactPointCount; i++)
             previewLine.SetPosition(i, points[i]);
 
-        DrawPreviewCoverage(points, firstBouncePointIndex);
-
-        // Keep dot size constant in world units regardless of path length.
-        if (previewLine.sharedMaterial != null)
-        {
-            float totalLen = 0f;
-            for (int i = 1; i < exactPointCount; i++)
-                totalLen += Vector3.Distance(points[i - 1], points[i]);
-            float tiles = Mathf.Max(1f, totalLen * 3f);
-            var scale = previewLine.sharedMaterial.mainTextureScale;
-            scale.x = tiles;
-            previewLine.sharedMaterial.mainTextureScale = scale;
-        }
-    }
-
-    void EnsurePreviewCoverageLine()
-    {
         if (previewCoverageLine != null)
         {
-            ConfigurePreviewCoverageLine(previewCoverageLine);
-            return;
+            previewCoverageLine.enabled = false;
+            previewCoverageLine.positionCount = 0;
         }
-        if (previewLine == null) return;
-
-        GameObject coverageObject = new GameObject("Trajectory Possible Path");
-        coverageObject.hideFlags = HideFlags.DontSave;
-        coverageObject.layer = previewLine.gameObject.layer;
-        coverageObject.transform.SetParent(previewLine.transform.parent, false);
-        previewCoverageLine = coverageObject.AddComponent<LineRenderer>();
-        ConfigurePreviewCoverageLine(previewCoverageLine);
-    }
-
-    void ConfigurePreviewCoverageLine(LineRenderer line)
-    {
-        if (line == null) return;
-        line.enabled = false;
-        line.positionCount = 0;
-        line.useWorldSpace = true;
-        line.loop = false;
-        line.alignment = LineAlignment.View;
-        line.textureMode = LineTextureMode.Stretch;
-        line.numCornerVertices = 8;
-        line.numCapVertices = 8;
-        line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        line.receiveShadows = false;
-        line.generateLightingData = false;
-        line.sortingLayerID = previewLine != null ? previewLine.sortingLayerID : 0;
-        line.sortingOrder = previewLine != null ? previewLine.sortingOrder - 1 : -1;
-        line.widthMultiplier = 1f;
-        UpdatePreviewCoverageWidth(line);
-
-        Gradient gradient = new Gradient();
-        gradient.SetKeys(
-            new[]
-            {
-                new GradientColorKey(new Color(0.16f, 0.88f, 1f), 0f),
-                new GradientColorKey(new Color(0.32f, 0.62f, 1f), 1f)
-            },
-            new[]
-            {
-                new GradientAlphaKey(0.24f, 0f),
-                new GradientAlphaKey(0.12f, 0.55f),
-                new GradientAlphaKey(0.025f, 1f)
-            });
-        line.colorGradient = gradient;
-
-        if (_previewCoverageMaterial == null)
-        {
-            if (previewLine != null && previewLine.sharedMaterial != null)
-                _previewCoverageMaterial = new Material(previewLine.sharedMaterial);
-            else
-            {
-                Shader shader = Shader.Find("Sprites/Default");
-                if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
-                if (shader == null) shader = Shader.Find("Unlit/Color");
-                if (shader != null) _previewCoverageMaterial = new Material(shader);
-            }
-            if (_previewCoverageMaterial != null)
-            {
-                _previewCoverageMaterial.name = "Buca Trajectory Possible Path Material";
-                _previewCoverageMaterial.hideFlags = HideFlags.DontSave;
-                if (_previewCoverageMaterial.HasProperty("_BaseMap"))
-                    _previewCoverageMaterial.SetTexture("_BaseMap", null);
-                if (_previewCoverageMaterial.HasProperty("_MainTex"))
-                    _previewCoverageMaterial.SetTexture("_MainTex", null);
-                if (_previewCoverageMaterial.HasProperty("_BaseColor"))
-                    _previewCoverageMaterial.SetColor("_BaseColor", Color.white);
-                if (_previewCoverageMaterial.HasProperty("_Color"))
-                    _previewCoverageMaterial.SetColor("_Color", Color.white);
-                if (_previewCoverageMaterial.HasProperty("_Surface"))
-                    _previewCoverageMaterial.SetFloat("_Surface", 1f);
-                if (_previewCoverageMaterial.HasProperty("_ZWrite"))
-                    _previewCoverageMaterial.SetFloat("_ZWrite", 0f);
-                _previewCoverageMaterial.renderQueue = 3000;
-            }
-        }
-        if (_previewCoverageMaterial != null)
-            line.sharedMaterial = _previewCoverageMaterial;
-    }
-
-    void UpdatePreviewCoverageWidth(LineRenderer line)
-    {
-        if (line == null) return;
-        float start = Mathf.Max(0.18f, previewCoverageStartWidth);
-        float end = Mathf.Max(start, previewCoverageEndWidth);
-        if (Mathf.Approximately(start, _coverageWidthStartCache)
-            && Mathf.Approximately(end, _coverageWidthEndCache))
-            return;
-        _coverageWidthStartCache = start;
-        _coverageWidthEndCache = end;
-        line.widthCurve = AnimationCurve.Linear(0f, start, 1f, end);
-    }
-
-    void DrawPreviewCoverage(System.Collections.Generic.List<Vector3> points,
-                             int firstBouncePointIndex)
-    {
-        if (previewCoverageLine == null) EnsurePreviewCoverageLine();
-        if (previewCoverageLine == null || firstBouncePointIndex < 0
-            || firstBouncePointIndex >= points.Count - 1)
-        {
-            if (previewCoverageLine != null)
-            {
-                previewCoverageLine.enabled = false;
-                previewCoverageLine.positionCount = 0;
-            }
-            return;
-        }
-
-        // Inspector values remain live-tunable without rebuilding materials.
-        UpdatePreviewCoverageWidth(previewCoverageLine);
-        int coverageCount = points.Count - firstBouncePointIndex;
-        previewCoverageLine.positionCount = coverageCount;
-        for (int i = 0; i < coverageCount; i++)
-            previewCoverageLine.SetPosition(i, points[firstBouncePointIndex + i]);
-        previewCoverageLine.enabled = true;
     }
 
     void HideTrajectoryPreview()
@@ -1924,12 +1791,6 @@ public class PuckController : MonoBehaviour
             aimLine.startColor = _aimLineDefaultStart;
             aimLine.endColor = _aimLineDefaultEnd;
         }
-    }
-
-    void OnDestroy()
-    {
-        if (_previewCoverageMaterial != null)
-            Destroy(_previewCoverageMaterial);
     }
 
     Vector3 GetMouseOnGround()

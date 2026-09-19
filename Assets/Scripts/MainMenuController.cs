@@ -34,29 +34,29 @@ public class MainMenuController : MonoBehaviour
     public float autoStartSeconds = 30f;
     [Tooltip("TMP text showing the countdown. Assign in Inspector.")]
     public TMP_Text autoStartText;
-    [Tooltip("Optional font override — drag your Bangers SDF (or any TMP font asset) " +
-             "here and it will be applied at Start. Leave empty to use whatever " +
-             "font is already on the TMP component.")]
+    [Tooltip("Serialized reference retained for compatibility. The countdown font is editor-baked on the TMP component.")]
     public TMPro.TMP_FontAsset autoStartFont;
 
     // Internal animation state
     float _idleTime;
     Vector2 _playBasePos, _quitBasePos, _titleBasePos;
     float _titleBaseSize;
-    float _playPressScale = 1f, _quitPressScale = 1f;
 
     // Auto-start state
     const float MainMenuAutoStartSeconds = 30f;
     float _autoStartTimer;
     bool _autoStarting;
 
+    [Header("Prebuilt returning-player prompt")]
+    [Tooltip("Authored ReturnPlayerPrompt prefab instance. This UI is never constructed at runtime.")]
+    [SerializeField] GameObject _resumePromptRoot;
+    [SerializeField] TMP_Text _resumeQuestion;
+    [SerializeField] Button[] _resumeButtons;
+    [SerializeField] Image[] _resumeButtonImages;
+    [SerializeField] TMP_Text[] _resumeButtonLabels;
+    [SerializeField] RectTransform _resumePanelRect;
+
     // Returning-player choice shown only after a manual PLAY press.
-    GameObject _resumePromptRoot;
-    TMP_Text _resumeQuestion;
-    Button[] _resumeButtons;
-    Image[] _resumeButtonImages;
-    TMP_Text[] _resumeButtonLabels;
-    RectTransform _resumePanelRect;
     int _resumeLevelIndex;
     int _resumeChoice;
     int _resumeInputBlockFrames;
@@ -64,8 +64,7 @@ public class MainMenuController : MonoBehaviour
     bool _resumeStickWasLeft;
     bool _resumeStickWasRight;
     bool _loadingGame;
-    Texture2D _resumeRoundedTexture;
-    Sprite _resumeRoundedSprite;
+    bool _resumeButtonsWired;
 
     public bool ResumePromptOpen => _resumePromptOpen;
 
@@ -92,13 +91,9 @@ public class MainMenuController : MonoBehaviour
         if (autoStartText != null)
         {
             autoStartText.gameObject.SetActive(autoStartSeconds > 0f);
-            autoStartText.text = Mathf.CeilToInt(autoStartSeconds).ToString();
-            // Apply font + material override if one is assigned.
-            if (autoStartFont != null)
-            {
-                autoStartText.font = autoStartFont;
-                autoStartText.fontSharedMaterial = autoStartFont.material;
-            }
+            int seconds = Mathf.CeilToInt(autoStartSeconds);
+            autoStartText.text = $"AUTO START  <color=#9AD8FF>{seconds}</color>  SECONDS";
+            autoStartText.rectTransform.localScale = Vector3.one;
         }
 
         StartCoroutine(EntranceAnimation());
@@ -146,49 +141,35 @@ public class MainMenuController : MonoBehaviour
             return;
         }
 
-        // Update countdown — always visible with full text + animated number.
+        // Update countdown text and warning color. Its authored prefab owns the
+        // layout and scale so it cannot jitter against other menu animation.
         if (autoStartText != null)
         {
-            // Force font + material every frame until it sticks (TMP keeps a
-            // material instance linked to the old font's atlas otherwise).
-            if (autoStartFont != null && autoStartText.font != autoStartFont)
-            {
-                autoStartText.font = autoStartFont;
-                autoStartText.fontSharedMaterial = autoStartFont.material;
-                autoStartText.ForceMeshUpdate();
-            }
             int secs = Mathf.Max(1, Mathf.CeilToInt(_autoStartTimer));
 
             Color textColor;
-            float scale;
 
             if (_autoStartTimer <= 5f)
             {
-                // Last 5s — hot magenta, fast pulse, bigger scale bounce.
+                // Last 5s — hot magenta warning without moving the layout.
                 textColor = new Color(1f, 0.30f, 0.62f, 1f);
-                float bounce = 1f + 0.2f * Mathf.Abs(Mathf.Sin(Time.time * 7f));
-                scale = bounce;
                 autoStartText.text = $"STARTING IN  <size=150%><color=#FF3D9E>{secs}</color></size>";
             }
             else if (_autoStartTimer <= 15f)
             {
-                // 15–5s — electric cyan warning, gentle pulse (synthwave palette).
+                // 15–5s — electric cyan warning (synthwave palette).
                 textColor = new Color(0.40f, 0.90f, 1f, 0.95f);
-                float pulse = 1f + 0.06f * Mathf.Sin(Time.time * 4f);
-                scale = pulse;
                 autoStartText.text = $"AUTO START IN  <size=130%><color=#2DE2FF>{secs}</color></size>  SECONDS";
             }
             else
             {
-                // 30–15s — calm light cyan, steady, subtle breathing.
+                // 30–15s — calm light cyan.
                 textColor = new Color(0.62f, 0.88f, 1f, 0.80f);
-                float breath = 1f + 0.02f * Mathf.Sin(Time.time * 1.5f);
-                scale = breath;
                 autoStartText.text = $"AUTO START IN  <size=120%><color=#9AD8FF>{secs}</color></size>  SECONDS";
             }
 
             autoStartText.color = textColor;
-            autoStartText.rectTransform.localScale = new Vector3(scale, scale, 1f);
+            autoStartText.rectTransform.localScale = Vector3.one;
         }
     }
 
@@ -268,20 +249,9 @@ public class MainMenuController : MonoBehaviour
                 hue);
         }
 
-        // Buttons — subtle position bob ONLY. ArcadeUINavigator owns the
-        // selected-button scale highlight, so we don't touch scale here.
-        if (playRect != null)
-        {
-            float bob = Mathf.Sin(_idleTime * 1.8f) * 3f;
-            playRect.anchoredPosition = _playBasePos + new Vector2(0f, bob);
-            _playPressScale = Mathf.Lerp(_playPressScale, 1f, Time.deltaTime * 8f);
-        }
-        if (quitRect != null)
-        {
-            float bob = Mathf.Sin(_idleTime * 1.8f + 0.6f) * 3f;
-            quitRect.anchoredPosition = _quitBasePos + new Vector2(0f, bob);
-            _quitPressScale = Mathf.Lerp(_quitPressScale, 1f, Time.deltaTime * 8f);
-        }
+        // Button positions remain at their authored anchors after the one-time
+        // entrance. Continuous bobbing fought the focus highlight and read as
+        // a glitch on cabinet displays.
 
         // Orbit puck — rotates around a 6-unit circle behind the menu
         if (orbitPuck != null)
@@ -322,7 +292,6 @@ public class MainMenuController : MonoBehaviour
         PlayerPrefs.Save();
 
         if (playBurst != null) { playBurst.Clear(true); playBurst.Play(true); }
-        _playPressScale = 1.18f;
         if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
         StartCoroutine(FlashAndLoad(new Color(1f, 0.3f, 0.65f), gameSceneName));
     }
@@ -450,169 +419,34 @@ public class MainMenuController : MonoBehaviour
 
     void EnsureResumePrompt()
     {
-        if (_resumePromptRoot != null) return;
-
-        Canvas canvas = GetComponentInParent<Canvas>();
-        if (canvas == null)
-            canvas = FindFirstObjectByType<Canvas>();
-        if (canvas == null)
+        bool valid = _resumePromptRoot != null && _resumeQuestion != null &&
+                     _resumePanelRect != null && _resumeButtons != null &&
+                     _resumeButtonImages != null && _resumeButtonLabels != null &&
+                     _resumeButtons.Length == 2 && _resumeButtonImages.Length == 2 &&
+                     _resumeButtonLabels.Length == 2;
+        if (!valid)
         {
-            Debug.LogError("[MainMenuController] Cannot create resume prompt: no Canvas found.");
+            Debug.LogError("[MainMenuController] The prebuilt returning-player prompt is incomplete. " +
+                           "Run RealBuca/Prebuild/Step 2 - Main Menu Runtime UI in the Unity Editor.", this);
             return;
         }
 
-        BuildResumeRoundedSprite();
-        TMP_FontAsset font = playLabel != null ? playLabel.font : TMP_Settings.defaultFontAsset;
-
-        _resumePromptRoot = new GameObject("ReturnPlayerPrompt", typeof(RectTransform));
-        RectTransform root = _resumePromptRoot.GetComponent<RectTransform>();
-        root.SetParent(canvas.transform, false);
-        Stretch(root);
-
-        Image dimmer = _resumePromptRoot.AddComponent<Image>();
-        dimmer.color = new Color(0.015f, 0.008f, 0.06f, 0.90f);
-        dimmer.raycastTarget = true;
-
-        GameObject panel = new GameObject("ResumeCard", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        _resumePanelRect = panel.GetComponent<RectTransform>();
-        _resumePanelRect.SetParent(root, false);
-        _resumePanelRect.anchorMin = _resumePanelRect.anchorMax = new Vector2(0.5f, 0.5f);
-        _resumePanelRect.pivot = new Vector2(0.5f, 0.5f);
-        // Reserve separate vertical bands for the question and helper line.
-        // The old 560-high card left only a narrow gap, and TMP's glyphs could
-        // draw beyond their RectTransform when the text changed by level.
-        _resumePanelRect.sizeDelta = new Vector2(900f, 640f);
-
-        Image panelImage = panel.GetComponent<Image>();
-        panelImage.sprite = _resumeRoundedSprite;
-        panelImage.type = Image.Type.Sliced;
-        panelImage.color = new Color(0.025f, 0.045f, 0.11f, 0.985f);
-        panelImage.raycastTarget = false;
-
-        var panelShadow = panel.AddComponent<Shadow>();
-        panelShadow.effectColor = new Color(0f, 0f, 0f, 0.72f);
-        panelShadow.effectDistance = new Vector2(14f, -18f);
-        var panelOutline = panel.AddComponent<UnityEngine.UI.Outline>();
-        panelOutline.effectColor = new Color(0.18f, 0.88f, 1f, 0.92f);
-        panelOutline.effectDistance = new Vector2(4f, -4f);
-
-        CreateResumeBar(panel.transform, "TopGlow", new Vector2(0f, 282f),
-            new Vector2(740f, 6f), new Color(0.15f, 0.92f, 1f, 1f));
-        CreateResumeBar(panel.transform, "GoldAccent", new Vector2(0f, 20f),
-            new Vector2(650f, 3f), new Color(1f, 0.69f, 0.20f, 0.9f));
-
-        TMP_Text eyebrow = CreateResumeText(panel.transform, "Eyebrow", font,
-            "PROGRESS FOUND", 27f, new Color(0.36f, 0.88f, 1f, 1f),
-            new Vector2(0f, 226f), new Vector2(780f, 44f));
-        eyebrow.fontStyle = FontStyles.Bold;
-        eyebrow.characterSpacing = 7f;
-
-        _resumeQuestion = CreateResumeText(panel.transform, "Question", font,
-            "CONTINUE FROM LEVEL 2?", 50f, Color.white,
-            new Vector2(0f, 153f), new Vector2(820f, 70f));
-        _resumeQuestion.fontStyle = FontStyles.Bold;
-        _resumeQuestion.enableAutoSizing = true;
-        _resumeQuestion.fontSizeMin = 36f;
-        _resumeQuestion.fontSizeMax = 50f;
-        _resumeQuestion.overflowMode = TextOverflowModes.Truncate;
-
-        TMP_Text hint = CreateResumeText(panel.transform, "Hint", font,
-            "YOUR LAST LEVEL IS READY", 22f, new Color(0.72f, 0.76f, 0.88f, 1f),
-            new Vector2(0f, 66f), new Vector2(760f, 36f));
-        hint.characterSpacing = 3f;
-        hint.overflowMode = TextOverflowModes.Truncate;
-
-        _resumeButtons = new Button[2];
-        _resumeButtonImages = new Image[2];
-        _resumeButtonLabels = new TMP_Text[2];
-        CreateResumeButton(panel.transform, 0, font, new Vector2(0f, -65f), "CONTINUE LEVEL 2");
-        CreateResumeButton(panel.transform, 1, font, new Vector2(0f, -184f), "START LEVEL 1");
-
-        TMP_Text controls = CreateResumeText(panel.transform, "Controls", font,
-            "BLACK  SELECT     •     WHITE  BACK", 19f,
-            new Color(0.50f, 0.72f, 0.86f, 0.88f),
-            new Vector2(0f, -284f), new Vector2(760f, 34f));
-        controls.characterSpacing = 2f;
-
-        _resumePromptRoot.SetActive(false);
+        if (_resumeButtonsWired) return;
+        _resumeButtons[0].onClick.AddListener(ContinueSavedLevelFromPrompt);
+        _resumeButtons[1].onClick.AddListener(StartLevelOneFromPrompt);
+        _resumeButtonsWired = true;
     }
 
-    void CreateResumeButton(Transform parent, int index, TMP_FontAsset font,
-        Vector2 position, string label)
+    void ContinueSavedLevelFromPrompt()
     {
-        GameObject go = new GameObject(index == 0 ? "ContinueSavedLevel" : "StartLevelOne",
-            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button));
-        RectTransform rt = go.GetComponent<RectTransform>();
-        rt.SetParent(parent, false);
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = position;
-        rt.sizeDelta = new Vector2(650f, 92f);
-
-        Image image = go.GetComponent<Image>();
-        image.sprite = _resumeRoundedSprite;
-        image.type = Image.Type.Sliced;
-        image.color = index == 0
-            ? new Color(0.03f, 0.62f, 0.72f, 1f)
-            : new Color(0.34f, 0.12f, 0.52f, 1f);
-
-        Button button = go.GetComponent<Button>();
-        button.targetGraphic = image;
-        button.transition = Selectable.Transition.None;
-        int capturedIndex = index;
-        button.onClick.AddListener(() =>
-        {
-            SetResumeChoice(capturedIndex);
-            StartGameAtLevel(capturedIndex == 0 ? _resumeLevelIndex : 0);
-        });
-
-        TMP_Text text = CreateResumeText(go.transform, "Label", font, label, 30f,
-            Color.white, Vector2.zero, new Vector2(610f, 72f));
-        text.fontStyle = FontStyles.Bold;
-        text.characterSpacing = 2f;
-        text.raycastTarget = false;
-
-        _resumeButtons[index] = button;
-        _resumeButtonImages[index] = image;
-        _resumeButtonLabels[index] = text;
+        SetResumeChoice(0);
+        StartGameAtLevel(_resumeLevelIndex);
     }
 
-    TMP_Text CreateResumeText(Transform parent, string name, TMP_FontAsset font,
-        string value, float size, Color color, Vector2 position, Vector2 dimensions)
+    void StartLevelOneFromPrompt()
     {
-        GameObject go = new GameObject(name, typeof(RectTransform),
-            typeof(CanvasRenderer), typeof(TextMeshProUGUI));
-        RectTransform rt = go.GetComponent<RectTransform>();
-        rt.SetParent(parent, false);
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = position;
-        rt.sizeDelta = dimensions;
-
-        TMP_Text text = go.GetComponent<TMP_Text>();
-        text.text = value;
-        text.font = font;
-        text.fontSize = size;
-        text.color = color;
-        text.alignment = TextAlignmentOptions.Center;
-        text.enableWordWrapping = false;
-        text.overflowMode = TextOverflowModes.Overflow;
-        return text;
-    }
-
-    void CreateResumeBar(Transform parent, string name, Vector2 position,
-        Vector2 dimensions, Color color)
-    {
-        GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        RectTransform rt = go.GetComponent<RectTransform>();
-        rt.SetParent(parent, false);
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = position;
-        rt.sizeDelta = dimensions;
-        Image image = go.GetComponent<Image>();
-        image.color = color;
-        image.raycastTarget = false;
+        SetResumeChoice(1);
+        StartGameAtLevel(0);
     }
 
     IEnumerator AnimateResumePromptIn()
@@ -632,53 +466,9 @@ public class MainMenuController : MonoBehaviour
             _resumePanelRect.localScale = Vector3.one;
     }
 
-    void BuildResumeRoundedSprite()
-    {
-        if (_resumeRoundedSprite != null) return;
-
-        const int size = 64;
-        const int radius = 15;
-        _resumeRoundedTexture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        _resumeRoundedTexture.name = "Runtime Resume Rounded Rectangle";
-        _resumeRoundedTexture.wrapMode = TextureWrapMode.Clamp;
-        _resumeRoundedTexture.filterMode = FilterMode.Bilinear;
-
-        for (int y = 0; y < size; y++)
-        for (int x = 0; x < size; x++)
-        {
-            float cx = Mathf.Clamp(x, radius, size - 1 - radius);
-            float cy = Mathf.Clamp(y, radius, size - 1 - radius);
-            float dx = x - cx;
-            float dy = y - cy;
-            float alpha = dx * dx + dy * dy <= radius * radius ? 1f : 0f;
-            _resumeRoundedTexture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
-        }
-        _resumeRoundedTexture.Apply();
-        _resumeRoundedSprite = Sprite.Create(_resumeRoundedTexture,
-            new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f,
-            0, SpriteMeshType.FullRect, new Vector4(radius, radius, radius, radius));
-        _resumeRoundedSprite.name = "Runtime Resume Rounded Sprite";
-    }
-
-    static void Stretch(RectTransform rt)
-    {
-        rt.anchorMin = Vector2.zero;
-        rt.anchorMax = Vector2.one;
-        rt.offsetMin = Vector2.zero;
-        rt.offsetMax = Vector2.zero;
-        rt.localScale = Vector3.one;
-    }
-
-    void OnDestroy()
-    {
-        if (_resumeRoundedSprite != null) Destroy(_resumeRoundedSprite);
-        if (_resumeRoundedTexture != null) Destroy(_resumeRoundedTexture);
-    }
-
     public void QuitGame()
     {
         if (quitBurst != null) { quitBurst.Clear(true); quitBurst.Play(true); }
-        _quitPressScale = 1.18f;
         if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
         StartCoroutine(FlashAndQuit(new Color(0.3f, 0.85f, 1f)));
     }

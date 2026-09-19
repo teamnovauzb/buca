@@ -136,10 +136,17 @@ public class AudioManager : MonoBehaviour
     // ─────────────────────────────────────────────────────────
     // Internals
     // ─────────────────────────────────────────────────────────
-    AudioSource[] _sfxPool;
+    [Header("Prebuilt audio source rig")]
+    [Tooltip("Authored AudioSources used for overlapping one-shot effects. These must be baked into the scene/prefab.")]
+    [SerializeField] AudioSource[] _sfxPool;
+    [SerializeField] AudioSource _musicA;
+    [SerializeField] AudioSource _musicB;
+    [SerializeField] AudioSource _magnetLoop;
+    [SerializeField] AudioSource _windLoop;
+    [SerializeField] AudioSource _gravityLoop;
+
     int _sfxPoolIndex;
-    AudioSource _musicA, _musicB, _activeMusic;
-    AudioSource _magnetLoop, _windLoop, _gravityLoop;
+    AudioSource _activeMusic;
 
     Coroutine _musicCo;
     bool _tenseModeActive;
@@ -159,7 +166,7 @@ public class AudioManager : MonoBehaviour
         if (transform.parent == null) DontDestroyOnLoad(gameObject);
 
         LoadVolumes();
-        BuildAudioSources();
+        InitializePrebuiltAudioSources();
         if (!continuousBackgroundAudioEnabled)
             StopContinuousBackgroundAudioImmediate();
 
@@ -185,41 +192,17 @@ public class AudioManager : MonoBehaviour
 
     bool _initialSceneHandled;
 
-    void BuildAudioSources()
+    void InitializePrebuiltAudioSources()
     {
-        // SFX pool
-        _sfxPool = new AudioSource[Mathf.Max(1, sfxPoolSize)];
-        for (int i = 0; i < _sfxPool.Length; i++)
-        {
-            var go = new GameObject($"SfxSource_{i}");
-            go.transform.SetParent(transform);
-            var src = go.AddComponent<AudioSource>();
-            src.playOnAwake = false;
-            src.outputAudioMixerGroup = sfxGroup;
-            _sfxPool[i] = src;
-        }
-
-        // Music A/B for crossfade
-        _musicA = NewLoopSource("MusicA", musicGroup);
-        _musicB = NewLoopSource("MusicB", musicGroup);
         _activeMusic = _musicA;
 
-        // Per-mechanic looping sources
-        _magnetLoop  = NewLoopSource("MagnetLoop",  sfxGroup);
-        _windLoop    = NewLoopSource("WindLoop",    sfxGroup);
-        _gravityLoop = NewLoopSource("GravityLoop", sfxGroup);
-    }
-
-    AudioSource NewLoopSource(string name, AudioMixerGroup group)
-    {
-        var go = new GameObject(name);
-        go.transform.SetParent(transform);
-        var src = go.AddComponent<AudioSource>();
-        src.loop = true;
-        src.playOnAwake = false;
-        src.volume = 0f;
-        src.outputAudioMixerGroup = group;
-        return src;
+        bool missingPool = _sfxPool == null || _sfxPool.Length == 0;
+        if (missingPool || _musicA == null || _musicB == null ||
+            _magnetLoop == null || _windLoop == null || _gravityLoop == null)
+        {
+            Debug.LogError("[AudioManager] The prebuilt AudioSource rig is incomplete. " +
+                           "Run RealBuca/Prebuild/Step 1 - Core Runtime Objects in the Unity Editor.", this);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════

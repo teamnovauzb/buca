@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -976,3 +977,4 @@ public class MenuSetupHelper : MonoBehaviour
         return inside;
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
@@ -1222,3 +1223,4 @@ public sealed class PremiumResultTotem3D : MonoBehaviour
         if (_stageRoot != null) Destroy(_stageRoot);
     }
 }
+#endif

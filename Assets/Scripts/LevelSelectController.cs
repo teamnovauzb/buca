@@ -30,6 +30,7 @@ public class LevelSelectController : MonoBehaviour
         public Image checkmark;          // green check shown when score > 0
         public TMP_Text bestTimeLabel;   // optional time badge top-right
         public Image tileBackground;     // for "currently selected" highlight
+        public GameObject lockOverlay;   // prebuilt dimmer + padlock visual
     }
 
     [Header("Scene refs")]
@@ -550,12 +551,14 @@ public class LevelSelectController : MonoBehaviour
             // A subtle outline keeps both earned and empty stars legible over
             // every chapter background without changing the star artwork.
             var outline = star.GetComponent<Outline>();
-            if (outline == null) outline = star.gameObject.AddComponent<Outline>();
-            outline.effectColor = earned
-                ? new Color(0.55f, 0.25f, 0.02f, 0.80f)
-                : new Color(0.02f, 0.08f, 0.16f, 0.82f);
-            outline.effectDistance = new Vector2(1.5f, -1.5f);
-            outline.useGraphicAlpha = true;
+            if (outline != null)
+            {
+                outline.effectColor = earned
+                    ? new Color(0.55f, 0.25f, 0.02f, 0.80f)
+                    : new Color(0.02f, 0.08f, 0.16f, 0.82f);
+                outline.effectDistance = new Vector2(1.5f, -1.5f);
+                outline.useGraphicAlpha = true;
+            }
         }
 
         if (starRow != null)
@@ -580,79 +583,15 @@ public class LevelSelectController : MonoBehaviour
 
     /// <summary>Apply/clear the locked look on a tile: disable its button so it
     /// can't be started (mouse OR keyboard), and show a dim padlock overlay.
-    /// The overlay is created lazily, so no tile rebuild is needed.</summary>
+    /// The overlay is authored on every tile by the editor baker.</summary>
     void SetTileLocked(LevelEntry entry, bool locked)
     {
         if (entry.button != null) entry.button.interactable = !locked;
-
-        Transform tileT = entry.button != null ? entry.button.transform
-                        : (entry.tileBackground != null ? entry.tileBackground.transform : null);
-        if (tileT == null) return;
-
-        var lockT = tileT.Find("LockOverlay");
-        if (locked && lockT == null)
+        if (entry.lockOverlay != null)
         {
-            var ov = new GameObject("LockOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-            ov.transform.SetParent(tileT, false);
-            var rt = (RectTransform)ov.transform;
-            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-            rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
-            var ovImg = ov.GetComponent<Image>();
-            ovImg.color = new Color(0.02f, 0.02f, 0.05f, 0.74f); // dim + disabled look
-            ovImg.raycastTarget = true;                          // swallow clicks on locked tiles
-
-            var ic = new GameObject("LockIcon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-            ic.transform.SetParent(ov.transform, false);
-            var irt = (RectTransform)ic.transform;
-            irt.anchorMin = irt.anchorMax = new Vector2(0.5f, 0.5f);
-            irt.sizeDelta = new Vector2(58f, 58f);
-            irt.anchoredPosition = Vector2.zero;
-            var icImg = ic.GetComponent<Image>();
-            icImg.sprite = LockSprite();
-            icImg.color = new Color(0.85f, 0.88f, 1f, 0.92f);
-            icImg.raycastTarget = false;
-
-            lockT = ov.transform;
+            entry.lockOverlay.SetActive(locked);
+            if (locked) entry.lockOverlay.transform.SetAsLastSibling();
         }
-        if (lockT != null) lockT.gameObject.SetActive(locked);
-    }
-
-    static Sprite _lockSprite;
-    /// <summary>Procedural padlock sprite (white, tintable) — no art asset needed.</summary>
-    static Sprite LockSprite()
-    {
-        if (_lockSprite != null) return _lockSprite;
-        const int S = 64;
-        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
-        var px = new Color32[S * S];
-        var clear = new Color32(255, 255, 255, 0);
-        var white = new Color32(255, 255, 255, 255);
-        for (int i = 0; i < px.Length; i++) px[i] = clear;
-
-        // Body: rectangle, x[14..50] y[6..34]
-        for (int y = 6; y <= 34; y++)
-            for (int x = 14; x <= 50; x++)
-                px[y * S + x] = white;
-        // Shackle: ring centred (32,33), radius 8..13, upper half only
-        var c = new Vector2(32f, 33f);
-        for (int y = 33; y < 58; y++)
-            for (int x = 12; x < 52; x++)
-            {
-                float d = Vector2.Distance(new Vector2(x, y), c);
-                if (d >= 8f && d <= 13f) px[y * S + x] = white;
-            }
-        // Keyhole: punch a hole + slot in the body
-        for (int y = 12; y <= 28; y++)
-            for (int x = 27; x <= 37; x++)
-            {
-                bool hole = Vector2.Distance(new Vector2(x, y), new Vector2(32f, 24f)) <= 3.4f;
-                bool slot = x >= 31 && x <= 33 && y >= 16 && y <= 24;
-                if (hole || slot) px[y * S + x] = clear;
-            }
-
-        tex.SetPixels32(px); tex.Apply();
-        _lockSprite = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), 100f);
-        return _lockSprite;
     }
 
     // ─────────────────────────────────────────────────────────

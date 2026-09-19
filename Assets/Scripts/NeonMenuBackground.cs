@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
@@ -87,3 +88,4 @@ public static class NeonMenuBackground
         return null; // only apply to the real MainMenuCanvas, never an arbitrary one
     }
 }
+#endif

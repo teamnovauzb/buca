@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -1207,3 +1208,4 @@ public sealed class PremiumLevelMap3D : MonoBehaviour
         _meshes.Clear();
     }
 }
+#endif

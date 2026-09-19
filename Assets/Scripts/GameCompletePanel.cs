@@ -22,6 +22,9 @@ public class GameCompletePanel : MonoBehaviour
     public Button mainMenuButton;
     public string mainMenuSceneName = "MainMenu";
 
+    [Header("Prebuilt golf scorecard")]
+    public GolfScorecardView golfScorecard;
+
     void Awake()
     {
         // Zero out visuals only — do NOT SetActive(false) here.
@@ -80,7 +83,22 @@ public class GameCompletePanel : MonoBehaviour
                 statsText.text = $"TOTAL STROKES  {totalStrokes}\nPUCK RATING  {totalStars} / {maxStars}";
             }
         }
+
+        LevelManager manager = LevelManager.Instance;
+        if (golfScorecard != null && manager != null)
+            golfScorecard.Populate(manager.CampaignScorecard,
+                manager.CurrentLevelNumber, manager.TotalLevels);
         StartCoroutine(ShowRoutine());
+    }
+
+    /// <summary>
+    /// Luxodd owns Restart/End once the official transaction opens. Hide the
+    /// local replay/menu actions so they cannot bypass session finalization.
+    /// </summary>
+    public void SetLocalActionsVisible(bool visible)
+    {
+        if (replayButton != null) replayButton.gameObject.SetActive(visible);
+        if (mainMenuButton != null) mainMenuButton.gameObject.SetActive(visible);
     }
 
     IEnumerator ShowRoutine()

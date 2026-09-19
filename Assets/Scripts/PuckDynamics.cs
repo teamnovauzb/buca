@@ -2,8 +2,8 @@ using UnityEngine;
 
 /// <summary>
 /// Runtime feel-layer on the puck:
-///   • Scales TrailRenderer width, idle-glow emission rate, and puck
-///     material emission intensity to the puck's current speed.
+///   • Scales the authored TrailRenderer width and idle-glow emission rate
+///     to the puck's current speed.
 ///   • Forces the puck's visual rotation axis to match its velocity
 ///     direction so the SpinDecal rolls the correct way regardless of
 ///     rigidbody angular velocity.
@@ -27,26 +27,15 @@ public class PuckDynamics : MonoBehaviour
     public float fastSpeed = 14f;
 
     [Header("Trail width scaling")]
-    public float trailWidthSlow = 0.18f;
-    public float trailWidthFast = 0.75f;
-
-    [Header("Trail color scaling")]
-    [Tooltip("Trail color at slow speed — warm mellow yellow.")]
-    public Color trailColorSlow = new Color(1f, 0.88f, 0.3f, 1f);
-    [Tooltip("Trail color at fast speed — hot white-cyan for 'danger'.")]
-    public Color trailColorFast = new Color(1.4f, 1.3f, 1.2f, 1f);
-    [Tooltip("Apply colors via TrailRenderer.colorGradient (keeps fade-to-zero alpha).")]
-    public bool driveTrailColor = true;
+    public float trailWidthSlow = 0.08f;
+    public float trailWidthFast = 0.24f;
 
     [Header("Idle glow emission rate scaling")]
-    public float idleGlowRateSlow = 14f;
-    public float idleGlowRateFast = 46f;
+    public float idleGlowRateSlow = 7f;
+    public float idleGlowRateFast = 22f;
 
-    [Header("Puck emission HDR scaling")]
-    [Tooltip("Multiplier applied to the puck material's emission color " +
-             "at slowSpeed. Values >1 brighten.")]
-    public float emissionSlow = 1.0f;
-    public float emissionFast = 1.55f;
+    [HideInInspector] public float emissionSlow = 1f;
+    [HideInInspector] public float emissionFast = 1f;
 
     [Header("Rotation follows velocity")]
     [Tooltip("If true, overrides rigidbody rotation so the puck visually " +
@@ -57,41 +46,11 @@ public class PuckDynamics : MonoBehaviour
     public float rollDegreesPerUnit = 191f;
 
     Rigidbody _rb;
-    Color _emissionBase;
-    bool _hasEmissionBase;
     Quaternion _visualRot = Quaternion.identity;
-
-    // Cached trail gradient — reused so the trail never allocates per frame (no GC hitch).
-    Gradient _trailGrad;
-    GradientColorKey[] _trailCK;
-    GradientAlphaKey[] _trailAK;
-    Color _lastTrailColor = new Color(-1f, -1f, -1f, -1f);
 
     void Awake()
     {
         _rb = GetComponent<Rigidbody>();
-
-        _trailGrad = new Gradient();
-        _trailCK = new GradientColorKey[2];
-        _trailAK = new[] { new GradientAlphaKey(0.85f, 0f), new GradientAlphaKey(0f, 1f) };
-
-        // Instance the puck material so emission tweaks don't leak.
-        if (puckRenderer != null && puckRenderer.sharedMaterial != null)
-        {
-            var mat = puckRenderer.material; // forces instance
-            // Use base color as "emission base" when no _EmissionColor exists
-            // (OpaqueUnlitMat puck does its glow via base color, not emission).
-            if (mat.HasProperty("_EmissionColor"))
-            {
-                _emissionBase = mat.GetColor("_EmissionColor");
-                _hasEmissionBase = _emissionBase.maxColorComponent > 0.01f;
-            }
-            if (!_hasEmissionBase && mat.HasProperty("_BaseColor"))
-            {
-                _emissionBase = mat.GetColor("_BaseColor");
-                _hasEmissionBase = true;
-            }
-        }
 
         // Rotation override needs the rigidbody not to fight us — freeze
         // its angular axis but keep physics velocity alone.
@@ -113,23 +72,6 @@ public class PuckDynamics : MonoBehaviour
             float w = Mathf.Lerp(trailWidthSlow, trailWidthFast, k);
             trail.startWidth = w;
             trail.endWidth = 0f;
-
-            // Trail color lerp — gentle yellow at slow → hot white at fast.
-            if (driveTrailColor)
-            {
-                Color c = Color.Lerp(trailColorSlow, trailColorFast, k);
-                // Only rebuild + reassign when the color actually shifts, reusing the
-                // cached gradient/arrays — so this never allocates per frame.
-                float d = Mathf.Abs(c.r - _lastTrailColor.r) + Mathf.Abs(c.g - _lastTrailColor.g) + Mathf.Abs(c.b - _lastTrailColor.b);
-                if (d > 0.02f)
-                {
-                    _lastTrailColor = c;
-                    _trailCK[0] = new GradientColorKey(c, 0f);
-                    _trailCK[1] = new GradientColorKey(c, 1f);
-                    _trailGrad.SetKeys(_trailCK, _trailAK);
-                    trail.colorGradient = _trailGrad;
-                }
-            }
         }
 
         // --- Idle glow emission rate ---
@@ -142,17 +84,6 @@ public class PuckDynamics : MonoBehaviour
             var rate = emission.rateOverTime;
             rate.constant = Mathf.Lerp(idleGlowRateSlow, idleGlowRateFast, k);
             emission.rateOverTime = rate;
-        }
-
-        // --- Puck material emission boost ---
-        if (_hasEmissionBase && puckRenderer != null && puckRenderer.material != null)
-        {
-            float mul = Mathf.Lerp(emissionSlow, emissionFast, k);
-            var mat = puckRenderer.material;
-            if (mat.HasProperty("_EmissionColor"))
-                mat.SetColor("_EmissionColor", _emissionBase * mul);
-            else if (mat.HasProperty("_BaseColor"))
-                mat.SetColor("_BaseColor", _emissionBase * mul);
         }
 
         // --- Rotation follows velocity ---

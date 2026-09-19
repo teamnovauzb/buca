@@ -35,6 +35,9 @@ public class LevelCompletePanel : MonoBehaviour
     public TMP_Text autoAdvanceText;
     public float autoAdvanceSeconds = 5f;
 
+    [Header("Prebuilt golf scorecard")]
+    public GolfScorecardView golfScorecard;
+
     [Header("Timing")]
     public float lineDelay = 0.22f;
     public float countUpDuration = 0.35f;
@@ -43,14 +46,6 @@ public class LevelCompletePanel : MonoBehaviour
     bool _waitingForInput;
     bool _skipped;
     System.Action _onContinue;
-    ResultBackdropBlur _blurBackdrop;
-    RectTransform _golfSummaryCard;
-    CanvasGroup _golfSummaryGroup;
-    TMP_Text _golfSummaryText;
-    TMP_Text _courseScorecardText;
-    static Sprite _playerPuckRatingSprite;
-    ResultPuckRating3D _puckRating3D;
-    PremiumResultTotem3D _premiumResultTotem3D;
 
     void Awake()
     {
@@ -98,14 +93,13 @@ public class LevelCompletePanel : MonoBehaviour
         // coroutines on inactive GameObjects.
         gameObject.SetActive(true);
         RestoreOriginalLayout();
+        PopulateGolfScorecard();
         if (AudioManager.Instance != null) AudioManager.Instance.PlayPanelOpen();
 
         // Reset visuals immediately so the first frame isn't a flash of
         // stale content from the previous level.
         if (group != null) { group.alpha = 0f; group.interactable = false; group.blocksRaycasts = false; }
         if (card != null) card.localScale = Vector3.zero;
-        if (_golfSummaryGroup != null) _golfSummaryGroup.alpha = 0f;
-        if (_golfSummaryCard != null) _golfSummaryCard.localScale = Vector3.one * 0.86f;
 
         StartCoroutine(RevealSequence(score));
     }
@@ -151,210 +145,18 @@ public class LevelCompletePanel : MonoBehaviour
         ShowLegacyLine(autoAdvanceText);
     }
 
-    static void EnsureAccentBar(Transform parent, string name, Vector2 anchor,
-        Vector2 position, Vector2 size, Color color)
-    {
-        Transform existing = parent.Find(name);
-        GameObject barGO = existing != null
-            ? existing.gameObject
-            : new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        if (existing == null) barGO.transform.SetParent(parent, false);
-
-        RectTransform rt = (RectTransform)barGO.transform;
-        rt.anchorMin = rt.anchorMax = rt.pivot = anchor;
-        rt.anchoredPosition = position;
-        rt.sizeDelta = size;
-        Image image = barGO.GetComponent<Image>();
-        image.color = color;
-        image.raycastTarget = false;
-    }
-
-    void ApplyPlayerPuckRatingIcons()
-    {
-        if (starImages == null || starImages.Length == 0) return;
-
-        Sprite puckSprite = GetPlayerPuckRatingSprite();
-        RectTransform row = starImages[0] != null
-            ? starImages[0].rectTransform.parent as RectTransform
-            : null;
-        if (row != null) row.sizeDelta = new Vector2(480f, 125f);
-
-        for (int i = 0; i < starImages.Length; i++)
-        {
-            Image icon = starImages[i];
-            if (icon == null) continue;
-
-            icon.sprite = puckSprite;
-            icon.preserveAspect = false;
-            icon.raycastTarget = false;
-            icon.gameObject.name = $"PlayerPuck_{i + 1}";
-
-            RectTransform rt = icon.rectTransform;
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = new Vector2((i - 1) * 140f, 0f);
-            rt.sizeDelta = new Vector2(126f, 104f);
-            rt.localRotation = Quaternion.identity;
-        }
-
-        // Preserve the icon's authored silver/cyan/gold colours when earned;
-        // unearned pucks remain readable silhouettes rather than yellow stars.
-        starLit = Color.white;
-        starUnlit = new Color(0.34f, 0.46f, 0.58f, 0.55f);
-    }
-
-    static Sprite GetPlayerPuckRatingSprite()
-    {
-        if (_playerPuckRatingSprite != null) return _playerPuckRatingSprite;
-
-        const int size = 160;
-        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        texture.name = "BucaPlayerPuckRatingIcon";
-        texture.filterMode = FilterMode.Bilinear;
-        texture.wrapMode = TextureWrapMode.Clamp;
-
-        Color clear = new Color(0f, 0f, 0f, 0f);
-        Color goldGlow = new Color(1f, 0.67f, 0.08f, 1f);
-        Color cyanRim = new Color(0.12f, 0.91f, 1f, 1f);
-        Color cyanBright = new Color(0.62f, 0.98f, 1f, 1f);
-        Color sideDark = new Color(0.018f, 0.045f, 0.085f, 1f);
-        Color sideLight = new Color(0.07f, 0.23f, 0.34f, 1f);
-        Color steelDark = new Color(0.24f, 0.34f, 0.45f, 1f);
-        Color steelLight = new Color(0.88f, 0.95f, 1f, 1f);
-
-        for (int y = 0; y < size; y++)
-        for (int x = 0; x < size; x++)
-        {
-            float nx = (x - (size - 1) * 0.5f) / (size * 0.5f);
-            float ny = (y - (size - 1) * 0.5f) / (size * 0.5f);
-            Color pixel = clear;
-
-            // Ground shadow gives the badge weight instead of looking like a
-            // flat circle pasted onto the result screen.
-            float shadow = Mathf.Sqrt((nx / 0.78f) * (nx / 0.78f) +
-                                      ((ny + 0.30f) / 0.25f) * ((ny + 0.30f) / 0.25f));
-            if (shadow < 1f)
-            {
-                pixel = new Color(0f, 0.02f, 0.05f,
-                    (1f - Mathf.SmoothStep(0.65f, 1f, shadow)) * 0.72f);
-            }
-
-            // Soft gold energy halo mirrors the live puck's yellow trail/glow.
-            float haloDistance = Mathf.Sqrt((nx / 0.91f) * (nx / 0.91f) +
-                                             ((ny + 0.03f) / 0.58f) * ((ny + 0.03f) / 0.58f));
-            if (haloDistance < 1f)
-            {
-                float halo = 1f - Mathf.SmoothStep(0.72f, 1f, haloDistance);
-                pixel = goldGlow;
-                pixel.a = Mathf.Max(pixel.a, halo * 0.34f);
-            }
-
-            // Lower body: a deep blue metallic side wall makes the icon read as
-            // the game's hockey puck, not an eye or a generic circular token.
-            float bodyDistance = Mathf.Sqrt((nx / 0.73f) * (nx / 0.73f) +
-                                             ((ny + 0.13f) / 0.38f) * ((ny + 0.13f) / 0.38f));
-            if (bodyDistance < 1f && ny < 0.10f)
-            {
-                float sideShade = Mathf.Clamp01((ny + 0.46f) / 0.56f);
-                pixel = Color.Lerp(sideDark, sideLight, sideShade);
-                pixel.a = 1f;
-            }
-
-            // Top ellipse and luminous cyan rim.
-            float topDistance = Mathf.Sqrt((nx / 0.73f) * (nx / 0.73f) +
-                                            ((ny - 0.09f) / 0.34f) * ((ny - 0.09f) / 0.34f));
-            if (topDistance < 1f)
-            {
-                pixel = Color.Lerp(cyanBright, cyanRim, Mathf.SmoothStep(0.76f, 1f, topDistance));
-                pixel.a = 1f;
-
-                float faceDistance = Mathf.Sqrt((nx / 0.62f) * (nx / 0.62f) +
-                                                 ((ny - 0.09f) / 0.255f) * ((ny - 0.09f) / 0.255f));
-                if (faceDistance < 1f)
-                {
-                    float directionalLight = Mathf.Clamp01(0.60f - nx * 0.31f + ny * 0.34f);
-                    float centreLight = 1f - Mathf.SmoothStep(0f, 1f, faceDistance);
-                    pixel = Color.Lerp(steelDark, steelLight,
-                        Mathf.Clamp01(directionalLight * 0.72f + centreLight * 0.24f));
-                    pixel.a = 1f;
-
-                    // Two restrained specular streaks sell polished metal.
-                    float glint = Mathf.Sqrt(((nx + 0.25f) / 0.16f) * ((nx + 0.25f) / 0.16f) +
-                                             ((ny - 0.20f) / 0.055f) * ((ny - 0.20f) / 0.055f));
-                    if (glint < 1f)
-                    {
-                        float shine = 1f - Mathf.SmoothStep(0.2f, 1f, glint);
-                        pixel = Color.Lerp(pixel, Color.white, shine * 0.9f);
-                    }
-
-                    float streak = Mathf.Abs(ny - (0.16f - nx * 0.10f));
-                    if (nx > -0.08f && nx < 0.37f && streak < 0.018f)
-                        pixel = Color.Lerp(pixel, Color.white, 0.46f);
-                }
-            }
-
-            texture.SetPixel(x, y, pixel);
-        }
-
-        texture.Apply(false, true);
-        _playerPuckRatingSprite = Sprite.Create(
-            texture,
-            new Rect(0f, 0f, size, size),
-            new Vector2(0.5f, 0.5f),
-            100f);
-        _playerPuckRatingSprite.name = "BucaPlayerPuckRatingIcon";
-        return _playerPuckRatingSprite;
-    }
-
     static void ShowLegacyLine(TMP_Text text)
     {
         if (text == null) return;
         text.gameObject.SetActive(true);
     }
 
-    void PopulateGolfSummary(ScoreCalculator.ScoreBreakdown score)
+    void PopulateGolfScorecard()
     {
-        if (_golfSummaryText == null) return;
-
-        int levelNumber = LevelManager.Instance != null
-            ? LevelManager.Instance.CurrentLevelNumber
-            : 0;
-        string level = levelNumber > 0 ? $"LEVEL {levelNumber}" : "LEVEL COMPLETE";
-        string relation = ScoreCalculator.FormatStrokesToPar(score.strokesToPar);
-        string resultColor = score.strokesToPar <= 0 ? "#FFD84D" : "#FF4D72";
         LevelManager manager = LevelManager.Instance;
-        string runningLine = "";
-        if (manager != null && manager.CampaignCompletedHoles > 0)
-        {
-            string runningColor = manager.CampaignToPar <= 0 ? "#FFD84D" : "#FF4D72";
-            runningLine =
-                $"\n<size=22><color=#75EDFF>COURSE THROUGH {manager.CampaignCompletedHoles}</color>" +
-                $"  <color=#DDF7FF>{manager.CampaignTotalStrokes} STROKES / PAR {manager.CampaignTotalPar}</color>" +
-                $"  <color={runningColor}>{LevelManager.FormatToPar(manager.CampaignToPar)}</color></size>";
-        }
-
-        _golfSummaryText.text =
-            $"<size=24><color=#75EDFF>{level}  •  HOLE RESULT</color></size>\n" +
-            $"<size=66><color={resultColor}>{score.golfResult}</color></size>\n" +
-            $"<size=25><color=#8FBFCE>STROKES</color>  <color=#F5FBFF>{score.strokesUsed}</color>" +
-            $"    <color=#8FBFCE>PAR</color>  <color=#FFD84D>{score.par}</color>" +
-            $"    <color={resultColor}>{relation}</color></size>" + runningLine;
-
-        if (_courseScorecardText != null)
-        {
-            if (manager == null || manager.CampaignCompletedHoles == 0)
-            {
-                _courseScorecardText.text = "";
-            }
-            else
-            {
-                string courseColor = manager.CampaignToPar <= 0 ? "#FFD84D" : "#FF4D72";
-                _courseScorecardText.text =
-                    $"<size=18><color=#75EDFF>COURSE CARD  •  LOWER IS BETTER</color>" +
-                    $"  <color={courseColor}>{LevelManager.FormatToPar(manager.CampaignToPar)}</color></size>\n" +
-                    $"<size=18><color=#DDF7FF>{manager.BuildCourseScorecard(30, 10)}</color></size>";
-                _courseScorecardText.color = Color.white;
-            }
-        }
+        if (golfScorecard == null || manager == null) return;
+        golfScorecard.Populate(manager.CampaignScorecard,
+            manager.CurrentLevelNumber, manager.TotalLevels);
     }
 
     IEnumerator RevealSequence(ScoreCalculator.ScoreBreakdown score)
@@ -547,25 +349,6 @@ public class LevelCompletePanel : MonoBehaviour
         rt.localRotation = Quaternion.identity;
         rt.anchoredPosition = restPosition;
         img.color = target;
-    }
-
-    IEnumerator AnimateGolfSummary()
-    {
-        if (_golfSummaryCard == null || _golfSummaryGroup == null) yield break;
-
-        float t = 0f;
-        const float duration = 0.38f;
-        while (t < duration)
-        {
-            t += Time.unscaledDeltaTime;
-            float k = Mathf.Clamp01(t / duration);
-            float e = EaseOutBack(k, 1.35f);
-            _golfSummaryGroup.alpha = Mathf.SmoothStep(0f, 1f, k);
-            _golfSummaryCard.localScale = Vector3.one * Mathf.LerpUnclamped(0.86f, 1f, e);
-            yield return null;
-        }
-        _golfSummaryGroup.alpha = 1f;
-        _golfSummaryCard.localScale = Vector3.one;
     }
 
     IEnumerator FadeInText(TMP_Text text)
