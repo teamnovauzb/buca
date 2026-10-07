@@ -55,3 +55,21 @@ crashlytics-build.properties
 # Kenney pack staging folder (raw zips + extracted, already copied to category folders)
 Assets/Audio/_downloads/
 Assets/Audio/_downloads.meta
+
+# Local render output, diagnostics, and backups
+/output/*
+!/output/lighting-prototype/
+/output/lighting-prototype/*
+!/output/lighting-prototype/serve.py
+!/output/lighting-prototype/validation.txt
+!/output/lighting-prototype/build-result.txt
+!/output/lighting-prototype/production-before.json
+!/output/lighting-prototype/production-after-check.json
+!/output/lighting-prototype/chrome-*.png
+!/output/lighting-prototype/safari-*.png
+/Assets/output/
+/Assets/output.meta
+
+# Python helper caches
+__pycache__/
+*.py[cod]

@@ -30,7 +30,7 @@ public class BankingRail : MonoBehaviour
     void OnCollisionEnter(Collision c)
     {
         var rb = c.rigidbody;
-        if (rb == null || rb.GetComponent<PuckController>() == null) return;
+        if (rb == null || (rb.GetComponent<PuckController>() == null && rb.GetComponent<TutorialPracticePuck>() == null)) return;
         if (Time.time - _lastHit < Cooldown) return;
         _lastHit = Time.time;
 

@@ -65,7 +65,6 @@ public static class AddMechanicsWave2
         n += Process("Level_24", r => TrapPocket(r, 2.5f, 4.6f));
         n += Process("Level_30", r => TrapPocket(r, 2.8f, 5.0f));
         // Vortex
-        n += Process("Level_15", r => Vortex(r, 2.2f, -0.5f, 2.4f, 9f));
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
@@ -75,7 +74,6 @@ public static class AddMechanicsWave2
             "• Sticky Mud (dark wood) → L7, L13, L20, L27 — stickier each time\n" +
             "• Conveyor (brass belt)  → L12, L16, L23, L28 — pushes harder each time\n" +
             "• Trap Pocket (decoy)    → L14, L22, L24, L30\n" +
-            "• Vortex (violet glow)   → L15\n\n" +
             "All non-blocking. You can DELETE this file now.",
             "OK");
     }
@@ -111,7 +109,7 @@ public static class AddMechanicsWave2
         if (_mud != null) m.GetComponent<MeshRenderer>().sharedMaterial = _mud;
         m.GetComponent<Collider>().isTrigger = true;
         var ip = m.AddComponent<IcePatch>();
-        ip.patchDamping = damping;
+        ip.patchDamping = 8f;
         ip.restoreDamping = 0.9f;
     }
 
@@ -126,7 +124,8 @@ public static class AddMechanicsWave2
         c.transform.localScale = new Vector3(sx, 0.04f, sz);
         if (_conveyor != null) c.GetComponent<MeshRenderer>().sharedMaterial = _conveyor;
         c.GetComponent<Collider>().isTrigger = true;
-        c.AddComponent<BucaWindZone>().forceMagnitude = force;
+        var conveyor=c.AddComponent<BucaWindZone>();conveyor.forceMagnitude = force;
+        MiniConveyorBaker.Apply(conveyor);
     }
 
     static void TrapPocket(GameObject root, float x, float z)
@@ -151,7 +150,7 @@ public static class AddMechanicsWave2
         var col = h.AddComponent<SphereCollider>();
         col.isTrigger = true;
         col.radius = inner * 0.59f;
-        h.AddComponent<DeadlyTrigger>();
+        CoralTrapBaker.Apply(h.AddComponent<DeadlyTrigger>());
     }
 
     static void Vortex(GameObject root, float x, float z, float range, float strength)

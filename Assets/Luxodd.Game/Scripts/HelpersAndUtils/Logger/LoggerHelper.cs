@@ -18,7 +18,7 @@ namespace Luxodd.Game.Scripts.HelpersAndUtils.Logger
             
             EventAggregator.Subscribe<DebugLoggerEnableEvent>(OnDebugLoggerEnableEvent);
             
-            DontDestroyOnLoad(gameObject);
+            DontDestroyOnLoad(transform.root.gameObject);
             
             NotifyLogEnabledEvent();
         }

@@ -35,80 +35,8 @@ public sealed class GolfScorecardView : MonoBehaviour
     public void Populate(IReadOnlyList<LevelManager.HoleScoreEntry> entries,
         int currentHoleNumber, int totalHoleCount)
     {
-        int slots = holeTexts != null ? holeTexts.Length : 0;
-        int completed = entries != null ? entries.Count : 0;
-        int totalStrokes = 0;
-        int totalPar = 0;
-
-        for (int slot = 0; slot < slots; slot++)
-        {
-            int holeNumber = slot + 1;
-            bool found = TryFindEntry(entries, holeNumber, out LevelManager.HoleScoreEntry entry);
-            TMP_Text cellText = holeTexts[slot];
-            Image background = holeBackgrounds != null && slot < holeBackgrounds.Length
-                ? holeBackgrounds[slot]
-                : null;
-
-            if (found)
-            {
-                totalStrokes += entry.strokes;
-                totalPar += entry.par;
-                string resultColor = ResultColor(entry.toPar);
-                if (cellText != null)
-                {
-                    cellText.text =
-                        $"<size=14><color=#7DDFF2>HOLE {holeNumber:00}</color></size>\n" +
-                        $"<size=28><color={resultColor}>{LevelManager.FormatToPar(entry.toPar)}</color></size>";
-                }
-
-                if (background != null)
-                    background.color = holeNumber == currentHoleNumber
-                        ? CurrentCell
-                        : entry.toPar < 0 ? UnderCell : entry.toPar == 0 ? EvenCell : OverCell;
-            }
-            else
-            {
-                if (cellText != null)
-                    cellText.text =
-                        $"<size=14><color=#426574>HOLE {holeNumber:00}</color></size>\n" +
-                        "<size=27><color=#35515E>—</color></size>";
-                if (background != null) background.color = EmptyCell;
-            }
-        }
-
-        int toPar = totalStrokes - totalPar;
-        string totalColor = ResultColor(toPar);
-        if (courseTotalText != null)
-        {
-            courseTotalText.text = completed > 0
-                ? $"<size=23>COURSE TOTAL:  <color={totalColor}>{PlainResult(toPar)}</color></size>\n" +
-                  $"<size=16><color=#8FB7C7>{completed} OF {Mathf.Max(completed, totalHoleCount)} HOLES" +
-                  $"   •   {totalStrokes} STROKES   •   PAR {totalPar}</color></size>"
-                : "NO COMPLETED HOLES";
-        }
-
-        if (currentResultText != null)
-        {
-            if (TryFindEntry(entries, currentHoleNumber, out LevelManager.HoleScoreEntry current))
-            {
-                string resultColor = ResultColor(current.toPar);
-                currentResultText.text =
-                    $"<size=18>HOLE {current.holeNumber:00}   •   " +
-                    $"{current.strokes} STROKES   •   PAR {current.par}</size>\n" +
-                    $"<size=30><color={resultColor}>{PlainResult(current.toPar)}</color></size>";
-            }
-            else
-            {
-                currentResultText.text = "COURSE PROGRESS";
-            }
-        }
-
-        if (group != null)
-        {
-            group.alpha = 1f;
-            group.interactable = false;
-            group.blocksRaycasts = false;
-        }
+        if (group != null) { group.alpha=0f; group.interactable=false; group.blocksRaycasts=false; }
+        gameObject.SetActive(false);
     }
 
     static bool TryFindEntry(IReadOnlyList<LevelManager.HoleScoreEntry> entries,

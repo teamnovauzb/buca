@@ -334,12 +334,14 @@ namespace Luxodd.Game.Scripts.Input.Editor
                 EditorGUILayout.Space(16);
                 EditorGUILayout.LabelField("Quick Fill", EditorStyles.boldLabel);
 
-                if (GUILayout.Button("Fill common labels (example)"))
+                if (GUILayout.Button("Fill Buca arcade labels"))
                 {
                     Undo.RecordObject(_bindings, "Quick Fill Arcade Bindings");
-                    _bindings.SetLabel(ArcadeButtonColor.Red, "Shoot");
-                    _bindings.SetLabel(ArcadeButtonColor.Green, "Jump");
+                    _bindings.SetLabel(ArcadeButtonColor.Black, "Confirm / Hold to Charge / Release to Shoot");
+                    _bindings.SetLabel(ArcadeButtonColor.Red, "");
+                    _bindings.SetLabel(ArcadeButtonColor.Green, "Undo Last Shot");
                     _bindings.SetLabel(ArcadeButtonColor.Yellow, "");
+                    _bindings.SetLabel(ArcadeButtonColor.Purple, "Restart Level");
                     EditorUtility.SetDirty(_bindings);
                     AssetDatabase.SaveAssets();
                 }

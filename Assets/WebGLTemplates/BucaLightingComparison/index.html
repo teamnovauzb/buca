@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Buca · Lighting study</title>
+<link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#102b2d;color:#f9efcf;font-family:system-ui,-apple-system,sans-serif}main{max-width:1440px;margin:auto;padding:24px}header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:20px}h1{font-size:24px;margin:0 0 5px;letter-spacing:-.6px}p{margin:0;font-size:14px;color:#b8cdca}.controls{display:flex;gap:8px;flex-wrap:wrap}button{border:1px solid #446865;border-radius:9px;background:#193d3e;color:#f9efcf;padding:12px 16px;font-weight:650;font-size:14px;cursor:pointer}button[aria-pressed=true]{background:#f5e6bd;color:#133332;border-color:#f5e6bd}button:disabled{opacity:.4;cursor:wait}.stage{border-radius:16px;overflow:hidden;border:1px solid #55716a;background:#071c1e;position:relative}canvas{display:block;width:100%;aspect-ratio:16/9;background:#071c1e}#loading{position:absolute;inset:0;display:grid;place-items:center;color:#f9efcf;background:#102b2d}footer{display:flex;gap:20px;justify-content:space-between;padding:16px 3px;font-size:13px;color:#b8cdca}strong{color:#f9efcf}#detail{max-width:700px;line-height:1.6}#error{background:#8b2c2c;color:white;white-space:pre-wrap;padding:16px;display:none}small{display:block;margin-top:10px;color:#789e98;font-size:12px}@media(max-width:850px){main{padding:12px}header{display:block}h1{font-size:21px}.controls{margin-top:14px}button{padding:10px}footer{display:block}#tech{margin-top:10px}}
+</style></head><body><main>
+<header><div><h1>BUCA / Puck lighting study</h1><p>Isolated prototype · actual WebGL player</p></div><div class="controls">
+<button id="current" aria-pressed="true" disabled>A · Current Web</button><button id="prototype" aria-pressed="false" disabled>B · Stylized + soft shadow</button>
+<button id="motion" aria-pressed="false" disabled>Motion: off</button><button id="view" aria-pressed="false" disabled>Board view</button><button id="capture" disabled>Save capture</button>
+</div></header>
+<div class="stage"><canvas id="unity-canvas" width="1440" height="810" tabindex="0"></canvas><div id="loading">Loading WebGL comparison…</div></div><div id="error"></div>
+<footer><div id="detail"><strong>A · Current Web</strong><br>Existing puck materials and yellow shadow disc. The saved Web quality profile disables real-time shadows.</div><div id="tech">Same geometry · Same camera · Same lighting<br><small>No live gameplay or purchases in this study.</small></div></footer>
+</main><script>
+let player, motion=false, wide=false;
+const canvas=document.querySelector('#unity-canvas'), loading=document.querySelector('#loading');
+window.bucaStudy={ready:false,errors:[],mode:'current'};
+function fail(message){bucaStudy.errors.push(String(message));const box=document.querySelector('#error');box.style.display='block';box.textContent+=message+'\n';}
+window.addEventListener('error',e=>fail(e.message));window.addEventListener('unhandledrejection',e=>fail(e.reason));
+function resize(){canvas.width=Math.round(Math.min(1440,canvas.clientWidth));canvas.height=Math.round(canvas.width*9/16);}
+window.addEventListener('resize',resize);resize();
+function setMode(mode){player.SendMessage('LightingComparison','SetMode',mode);bucaStudy.mode=mode;for(const id of ['current','prototype'])document.getElementById(id).setAttribute('aria-pressed',String(id===mode));document.getElementById('detail').innerHTML=mode==='current'?'<strong>A · Current Web</strong><br>Existing puck materials and yellow shadow disc. The saved Web quality profile disables real-time shadows; screen-space ambient occlusion is active.':'<strong>B · Stylized + soft shadow</strong><br>Shader Graph diffuse gradient, small lacquer and rim highlights, and a saved soft contact shadow. Real-time shadows and screen-space ambient occlusion are disabled in this prototype.';}
+document.querySelector('#current').onclick=()=>setMode('current');document.querySelector('#prototype').onclick=()=>setMode('prototype');
+document.querySelector('#motion').onclick=e=>{motion=!motion;player.SendMessage('LightingComparison','SetMotion',motion?'on':'off');e.target.textContent='Motion: '+(motion?'on':'off');e.target.setAttribute('aria-pressed',String(motion));};
+document.querySelector('#view').onclick=e=>{wide=!wide;player.SendMessage('LightingComparison','SetView',wide?'wide':'close');e.target.textContent=wide?'Close view':'Board view';e.target.setAttribute('aria-pressed',String(wide));};
+document.querySelector('#capture').onclick=()=>{const capturePath='/capture/'+bucaStudy.mode+(wide?'-board':'-close');canvas.toBlob(async blob=>{const button=document.querySelector('#capture');try{const response=await fetch(capturePath,{method:'POST',body:blob});if(!response.ok)throw new Error('Capture save failed');button.textContent='Capture saved';setTimeout(()=>button.textContent='Save capture',1500);}catch(error){fail(error.message);}},'image/png');};
+const script=document.createElement('script');script.src='Build/{{{ LOADER_FILENAME }}}';script.onload=()=>{
+createUnityInstance(canvas,{
+dataUrl:'Build/{{{ DATA_FILENAME }}}',frameworkUrl:'Build/{{{ FRAMEWORK_FILENAME }}}',codeUrl:'Build/{{{ CODE_FILENAME }}}',
+streamingAssetsUrl:'StreamingAssets',companyName:'Buca',productName:'Buca Lighting Study',productVersion:'prototype-1',
+matchWebGLToCanvasSize:false,devicePixelRatio:1,webglContextAttributes:{preserveDrawingBuffer:true},
+showBanner:(message,type)=>{if(type==='error')fail(message);else console.warn(message);}
+},progress=>loading.textContent='Loading WebGL comparison… '+Math.round(progress*100)+'%').then(instance=>{player=instance;bucaStudy.ready=true;loading.style.display='none';document.querySelectorAll('button').forEach(b=>b.disabled=false);}).catch(fail);
+};script.onerror=()=>fail('Could not load the Unity WebGL loader.');document.body.appendChild(script);
+</script></body></html>

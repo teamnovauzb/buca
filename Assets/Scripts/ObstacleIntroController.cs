@@ -6,18 +6,31 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Session-scoped mechanic introductions. The complete presentation is authored
+/// First-encounter mechanic introductions. The complete presentation is authored
 /// in the Game scene from a saved prefab; runtime code only changes copy, color,
 /// visibility, and animation state.
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class ObstacleIntroController : MonoBehaviour
 {
+    public WatchCopyTutorial3D watchCopy;
+    public const string SeenPreferencePrefix = "BucaWatchTutorialV2_";
+    public static void ResetTutorialsForNewRun()
+    {
+        PlayerPrefs.DeleteKey(HoneyComparisonTutorial.SeenKey);
+        foreach(string key in new[]{"BASIC","RIM","BANK","MUD","MOVE","ICE","FAST","+PTS","!","PUSH","WIND","PULL","JUMP","KICK","WARP","SLIDE","SPIN","GATE","PEGS"})
+        {
+            PlayerPrefs.DeleteKey(SeenPreferencePrefix+key);
+            PlayerPrefs.DeleteKey(SeenKey(key));
+        }
+        PlayerPrefs.Save();
+    }
+
     enum MechanicKind
     {
         RimRebound, BankingRail, StickyMud, OrbitingHole, SlipperyIce, SpeedBoost,
         BonusRoute, DeadlyHazard, Conveyor, WindCurrent, GravityWell, BouncePad,
-        KickerBumper, Teleporter
+        KickerBumper, Teleporter, GuardPegs
     }
 
     struct IntroDefinition
@@ -49,8 +62,8 @@ public sealed class ObstacleIntroController : MonoBehaviour
         new IntroDefinition(MechanicKind.BankingRail, "BANK", "SUPER BOUNCE WALL!",
             "HIT THE BLUE WALL  →  PUCK BOUNCES BACK!",
             "IT BLOCKS YOU — AIM FOR THE BOUNCE!", new Color(0.20f, 0.86f, 1f, 1f)),
-        new IntroDefinition(MechanicKind.StickyMud, "MUD", "SILLY STICKY MUD!",
-            "Uh-oh! Mud makes your puck sloooow.",
+        new IntroDefinition(MechanicKind.StickyMud, "MUD", "STICKY HONEY!",
+            "Honey makes your puck sloooow.",
             "PUSH HARD OR GO AROUND!", new Color(0.80f, 0.48f, 0.20f, 1f)),
         new IntroDefinition(MechanicKind.OrbitingHole, "MOVE", "CATCH ME IF YOU CAN!",
             "The hole wiggles around. Aim where it is going.",
@@ -61,9 +74,9 @@ public sealed class ObstacleIntroController : MonoBehaviour
         new IntroDefinition(MechanicKind.SpeedBoost, "FAST", "TURBO TIME!",
             "Ride the arrows and your puck goes ZOOM!",
             "3... 2... 1... WHOOSH!", new Color(0.20f, 1f, 0.58f, 1f)),
-        new IntroDefinition(MechanicKind.BonusRoute, "+PTS", "GOLD HUNT!",
-            "Collect the shiny dots for extra points.",
-            "GRAB THE GOLD!", new Color(1f, 0.67f, 0.10f, 1f)),
+        new IntroDefinition(MechanicKind.BonusRoute, "+PTS", "HEART STARS!",
+            "Collect a wooden star for one extra heart and bonus points.",
+            "ONE STAR, ONE EXTRA HEART!", new Color(1f, 0.67f, 0.10f, 1f)),
         new IntroDefinition(MechanicKind.DeadlyHazard, "!", "PINK MEANS OUCH!",
             "Pink traps pop your puck. Wiggle around them!",
             "DODGE THE GLOW!", new Color(1f, 0.16f, 0.48f, 1f)),
@@ -84,7 +97,10 @@ public sealed class ObstacleIntroController : MonoBehaviour
             "BONK... ZOOM!", new Color(1f, 0.68f, 0.16f, 1f)),
         new IntroDefinition(MechanicKind.Teleporter, "WARP", "MAGIC TUNNEL!",
             "Go in one portal... pop out of the other!",
-            "NOW YOU SEE ME...", new Color(0.55f, 0.35f, 1f, 1f))
+            "NOW YOU SEE ME...", new Color(0.55f, 0.35f, 1f, 1f)),
+        new IntroDefinition(MechanicKind.GuardPegs, "PEGS", "AIM THROUGH THE GAP",
+            "Shoot between the posts into the hole.",
+            "FIND THE GAP - THEN SHOOT", new Color(1f,.72f,.24f))
     };
 
     const float CardDisplaySeconds = 6.6f;
@@ -112,6 +128,7 @@ public sealed class ObstacleIntroController : MonoBehaviour
     bool _skipRequested;
     Action _onFinished;
 
+    public HoneyTutorialBoard honeyBoard;
     public bool IsShowing => _showing;
 
     void Awake()
@@ -129,13 +146,54 @@ public sealed class ObstacleIntroController : MonoBehaviour
 
     public bool TryShowForLevel(GameObject levelRoot, int levelNumber, Action onFinished)
     {
-        if (_showing || levelRoot == null || !HasPrebuiltView()) return false;
+        if (_showing || levelRoot == null) return false;
+        if (watchCopy != null)
+        {
+            var lessons = SelectLessonsForLevel(levelRoot, levelNumber);
+            if (lessons.Length == 0) return false;
+            _showing = true;
+            int next = 0;
+            Action advance = null;
+            advance = () =>
+            {
+                // This coordinator is authored under the inactive legacy card canvas.
+                // Its public entry point is called by LevelManager even while that canvas
+                // is hidden; enabled/active state must not suppress the saved 3D lessons.
+                if (this == null || watchCopy == null || watchCopy.presentation == null) return;
+                if (next >= lessons.Length)
+                {
+                    _showing = false;
+                    onFinished?.Invoke();
+                    return;
+                }
+                string key = lessons[next++];
+                Action completed = () =>
+                {
+                    PlayerPrefs.SetInt(SeenKey(key), 1);
+                    PlayerPrefs.Save();
+                    advance();
+                };
+                // Keep every lesson on this level, with the real puck appearance and camera.
+                if (BoardCoachTutorial.TryShow(levelRoot, key, completed, next, lessons.Length)) return;
+                watchCopy.Begin(new[] { key }, advance, seen =>
+                {
+                    PlayerPrefs.SetInt(SeenKey(seen), 1);
+                    PlayerPrefs.Save();
+                });
+            };
+            advance();
+            return _showing;
+        }
+        if (!HasPrebuiltView()) return false;
 
-        var pending = new List<IntroDefinition>(Definitions.Length);
+        string selected = SelectLessonForLevel(levelRoot, levelNumber,
+            LevelManager.Instance != null ? LevelManager.Instance.levelPrefabs : null);
+        if (selected == null) return false;
+        var pending = new List<IntroDefinition>(1);
         for (int i = 0; i < Definitions.Length; i++)
         {
             IntroDefinition definition = Definitions[i];
-            if (_seen.Contains(definition.kind) || !LevelContains(levelRoot, definition.kind))
+            if (definition.icon != selected)
                 continue;
 
             _seen.Add(definition.kind);
@@ -152,8 +210,54 @@ public sealed class ObstacleIntroController : MonoBehaviour
         return true;
     }
 
+    static string SeenKey(string key) => SeenPreferencePrefix + key +
+        ((key == "MUD" || key == "PEGS") ? "_V3" : "");
+
+    // Tutorials are level-entry instructions: always show them, even after watching
+    // them in an earlier attempt or session. Saved completion never suppresses a lesson.
+    public string[] SelectLessonsForLevel(GameObject root, int levelNumber)
+        => SelectLessonsForLevel(root, levelNumber,
+            LevelManager.Instance != null ? LevelManager.Instance.levelPrefabs : null);
+
+    public string[] SelectLessonsForLevel(GameObject root, int levelNumber, GameObject[] campaign)
+    {
+        // These levels intentionally start directly in gameplay on every visit.
+        if (root == null || levelNumber < 1 || levelNumber == 2 || levelNumber == 3 || levelNumber == 8 || levelNumber == 10 || levelNumber == 21) return Array.Empty<string>();
+        // The portal introduction explicitly teaches teleporting, even when the
+        // campaign list is unavailable or this board also contains older mechanics.
+        if (levelNumber == 20 && root.GetComponentInChildren<Teleporter>(true) != null)
+            return new[] { "WARP" };
+        var current = levelNumber == 1 ? new List<string> { "BASIC" } : MechanicKeys(root);
+        // Teach a mechanic on its introduction level on every visit, without
+        // replaying every previously introduced mechanic on later boards.
+        if (campaign != null && levelNumber > 1)
+            for (int i = 1; i < Mathf.Min(levelNumber - 1, campaign.Length); i++)
+                if (campaign[i] != null)
+                    foreach (var known in MechanicKeys(campaign[i])) current.Remove(known);
+        return current.ToArray();
+    }
+
+    // Compatibility with editor callers that only need the next lesson.
+    public string SelectLessonForLevel(GameObject root, int levelNumber, GameObject[] campaign)
+    {
+        var lessons = SelectLessonsForLevel(root, levelNumber, campaign);
+        return lessons.Length > 0 ? lessons[0] : null;
+    }
+
+    static List<string> MechanicKeys(GameObject root)
+    {
+        var keys = new List<string>();
+        foreach (var definition in Definitions)
+            if (LevelContains(root,definition.kind)) keys.Add(definition.icon);
+        if(root.GetComponentInChildren<MovingWall>(true)!=null) keys.Add("SLIDE");
+        if(root.GetComponentInChildren<RotatingWall>(true)!=null) keys.Add("SPIN");
+        if(root.GetComponentInChildren<DisappearingWall>(true)!=null) keys.Add("GATE");
+        return keys;
+    }
+
     public void SkipTutorial()
     {
+        if (watchCopy != null && watchCopy.IsShowing) { watchCopy.Skip(); return; }
         if (_showing) _skipRequested = true;
     }
 
@@ -196,6 +300,10 @@ public sealed class ObstacleIntroController : MonoBehaviour
                 return root.GetComponentInChildren<BouncePad>(true) != null;
             case MechanicKind.KickerBumper:
                 return root.GetComponentInChildren<KickerBumper>(true) != null;
+            case MechanicKind.GuardPegs:
+                foreach(var collider in root.GetComponentsInChildren<Collider>(true))
+                    if(collider.name=="NM2_GuardPeg") return true;
+                return false;
             case MechanicKind.Teleporter:
                 return root.GetComponentInChildren<Teleporter>(true) != null;
             default:
@@ -356,7 +464,10 @@ public sealed class ObstacleIntroController : MonoBehaviour
 
     void Update()
     {
-        if (_showing && ArcadeInputAdapter.GetButtonDown(ArcadeInputAdapter.Button.Purple))
+        // The animated view owns its input. Reading Back in both controllers
+        // would skip two queued lessons with one press.
+        if (_showing && !BoardCoachTutorial.IsActive && (watchCopy == null || !watchCopy.IsShowing) &&
+            ArcadeInputAdapter.CancelDown())
             SkipTutorial();
     }
 

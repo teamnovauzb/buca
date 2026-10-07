@@ -30,7 +30,7 @@ public class SpeedBoost : MonoBehaviour
         if (Time.time - _lastFireTime < cooldown) return;
         var rb = other.attachedRigidbody;
         if (rb == null) return;
-        if (rb.GetComponent<PuckController>() == null) return;
+        if ((rb.GetComponent<PuckController>() == null && rb.GetComponent<TutorialPracticePuck>() == null)) return;
         _lastFireTime = Time.time;
 
         Vector3 dir = lockToForward
@@ -44,6 +44,7 @@ public class SpeedBoost : MonoBehaviour
         if (v.magnitude > maxSpeedAfter) v = v.normalized * maxSpeedAfter;
         rb.linearVelocity = v;
 
+        if(rb.GetComponent<TutorialPracticePuck>()!=null) return;
         if (LevelManager.Instance != null)
         {
             LevelManager.Instance.PlayWallSpark(transform.position, dir);

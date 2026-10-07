@@ -49,13 +49,17 @@ public class OrbitingHole : MonoBehaviour
     {
         if (!_ready) return;
 
-        float t = (Time.time / Mathf.Max(0.1f, cycleSeconds) + phase) * Mathf.PI * 2f;
-        Vector3 off = new Vector3(Mathf.Cos(t), 0f, Mathf.Sin(t)) * radius;
-
-        Vector3 holePos = _holeBase + off;
+        Vector3 holePos = GetPredictedPosition(BoardMechanicClock.Time);
+        Vector3 off = holePos - _holeBase;
         if (_holeRb != null && _holeRb.isKinematic) _holeRb.MovePosition(holePos);  // sweep the trigger
         else _hole.position = holePos;
 
         if (_ring != null) _ring.position = _ringBase + off;                         // ring follows in lockstep
+    }
+
+    public Vector3 GetPredictedPosition(float time)
+    {
+        float t = (time / Mathf.Max(0.1f, cycleSeconds) + phase) * Mathf.PI * 2f;
+        return _holeBase + new Vector3(Mathf.Cos(t), 0, Mathf.Sin(t)) * radius;
     }
 }

@@ -34,7 +34,7 @@ public class DisappearingWall : MonoBehaviour
         float off = Mathf.Max(0f, offDuration);
         float fade = Mathf.Max(0.01f, fadeDuration);
         float cycle = Mathf.Max(0.01f, on + off + fade * 2f);
-        float t = Mathf.Repeat(Time.time + phase, cycle);
+        float t = Mathf.Repeat(BoardMechanicClock.Time + phase, cycle);
 
         // Phase layout per cycle:
         //   [0 .. onDuration]                                 → solid

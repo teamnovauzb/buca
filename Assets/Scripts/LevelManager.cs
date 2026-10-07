@@ -11,7 +11,7 @@ using System.Text;
 /// anything at runtime. It only swaps level prefabs, teleports the puck,
 /// and plays animations on pre-existing UI + VFX objects.
 /// </summary>
-public class LevelManager : MonoBehaviour
+public partial class LevelManager : MonoBehaviour
 {
     public static LevelManager Instance { get; private set; }
 
@@ -49,8 +49,8 @@ public class LevelManager : MonoBehaviour
     public LeaderboardPanel leaderboardPanel;
 
     [Header("Shot rules")]
-    [Tooltip("Optional legacy mode where a missed shot removes a heart. Normal BUCA play keeps this disabled so the timer is the completion limit and extra strokes only lower score/stars.")]
-    public bool useShotLives = false;
+    [Tooltip("A missed shot removes one move. Each level's starting allowance comes from LevelSettings.")]
+    public bool useShotLives = true;
 
     [Header("Legacy lives system (used only when Use Shot Lives is enabled)")]
     [Tooltip("Fallback lives count when a level has no LevelSettings. Set to the campaign maximum so the HUD has enough heart slots.")]
@@ -70,7 +70,7 @@ public class LevelManager : MonoBehaviour
     public bool showLeaderboardOnTimeUp = true;
 
     [Header("Timer")]
-    [Tooltip("Per-level settings array — index matches levelPrefabs. Timer values are normalized to 30 seconds at runtime.")]
+    [Tooltip("Per-level settings array — index matches levelPrefabs. Each level uses its authored learning/challenge time budget.")]
     public LevelSettings[] levelSettings;
     [Tooltip("Required timer duration for every level: 30 seconds.")]
     public float defaultTimeLimit = 30f;
@@ -87,11 +87,14 @@ public class LevelManager : MonoBehaviour
 
     [Header("Combo text (optional — floating HOLE IN ONE / PERFECT / NICE SAVE)")]
     public FloatingComboText comboText;
+    public ToyBoxComboSign comboSign;
 
     [Header("Prebuilt presentation controllers")]
     [SerializeField] ObstacleIntroController _obstacleIntro;
     [Tooltip("True 3D hole-in-one reward authored as a prefab in the Game scene.")]
     public HoleInOneCelebration3D holeInOneCelebration;
+    public ToyBoxWinCelebration premiumWinCelebration;
+    public BestShotReplay bestShotReplay;
 
     [Header("Screen edge neon (optional)")]
     public EdgeGlowEffect edgeGlow;
@@ -127,19 +130,15 @@ public class LevelManager : MonoBehaviour
     [Tooltip("Clear saved progress on Start (useful for testing).")]
     public bool resetProgressOnStart = false;
 
-    [Header("Quick restart")]
-    [Tooltip("Hold this player-owned arcade button to rebuild only the current level attempt. Purple is intentionally separate from Black (fire), White (back) and Luxodd's system controls.")]
-    public ArcadeInputAdapter.Button quickRestartButton = ArcadeInputAdapter.Button.Purple;
-    [Tooltip("Hold duration prevents an accidental tap from erasing a good attempt.")]
-    [Min(0.35f)]
-    public float quickRestartHoldSeconds = 1f;
-
     [Header("Puck")]
     // Keep in sync with BuildPuck() in GameSceneSetup.cs — both must
     // match so the shrink-into-hole and grow-back-in animations don't pop.
     public float puckSize = 0.6f;
 
     [Header("Camera follow")]
+    [Tooltip("Trial camera: smoothly follows moving shots. Disable to restore the original camera.")]
+    public bool cinematicGameplayFollow = true;
+    float _shotCameraBlend;
     public float followStrength = 0.14f;
     public float followSmoothTime = 0.35f;
 
@@ -180,8 +179,6 @@ public class LevelManager : MonoBehaviour
     bool _timeUpTriggered;
     bool _levelOneSecondChanceUsed;
     bool _obstacleIntroActive;
-    float _quickRestartHoldElapsed;
-    bool _quickRestartConsumedForCurrentHold;
 
     // Live score display
     int _displayedScore;
@@ -257,6 +254,10 @@ public class LevelManager : MonoBehaviour
     public GameObject CurrentLevelRoot => _currentInstance;
     public int CurrentLevelNumber => _currentIndex + 1;
     public int CurrentShotCount => _shotCount;
+    public HeartRewardPresentation heartRewardPresentation;
+    public int CurrentLives => _lives;
+    public int CurrentMaxLives => _currentMaxLives;
+    public float CurrentTimeRemaining => _timeRemaining;
     public int CurrentPar => GetThreeStarStrokesForLevel(_currentIndex);
     public int CurrentDisplayedScore => _displayedScore;
     public int CampaignCompletedHoles => _campaignScorecard.Count;
@@ -267,16 +268,13 @@ public class LevelManager : MonoBehaviour
     public IReadOnlyList<HoleScoreEntry> CampaignScorecard => _campaignScorecard;
     public bool LevelOneSecondChanceAvailable => grantLevelOneSecondChance
         && !_levelOneSecondChanceUsed;
-    public bool QuickRestartAvailable => GameplayInputAllowed;
-    public float QuickRestartHoldProgress => quickRestartHoldSeconds <= 0f
-        ? 0f
-        : Mathf.Clamp01(_quickRestartHoldElapsed / quickRestartHoldSeconds);
     /// <summary>
     /// Single authoritative gameplay-input gate. The puck must not keep
     /// accepting aim/fire input during transitions, failures or time-up.
     /// </summary>
-    public bool GameplayInputAllowed => !_isTransitioning && !_levelFailed
-        && !_obstacleIntroActive
+    public bool GameplayInputAllowed => !_rewindingShot && !_isTransitioning && !_levelFailed
+        && !(bestShotReplay != null && bestShotReplay.IsShowing)
+        && !_obstacleIntroActive && !(_obstacleIntro != null && _obstacleIntro.IsShowing)
         && _timerActive && !_timeUpTriggered && _timeRemaining > 0f;
 
     public static string FormatToPar(int difference)
@@ -307,7 +305,8 @@ public class LevelManager : MonoBehaviour
             text.Append("H");
             text.Append(entry.holeNumber.ToString("00"));
             text.Append(" ");
-            text.Append(FormatToPar(entry.toPar));
+            text.Append(entry.strokes);
+            text.Append(" SHOTS");
             shown++;
         }
         return text.ToString();
@@ -325,6 +324,7 @@ public class LevelManager : MonoBehaviour
 
     void ResetCampaignScorecard()
     {
+        if (bestShotReplay != null) bestShotReplay.ClearRun();
         _campaignScorecard.Clear();
         _campaignTotalStrokes = 0;
         _campaignTotalPar = 0;
@@ -409,48 +409,11 @@ public class LevelManager : MonoBehaviour
         bool resetModifier = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
         if (resetModifier && Input.GetKeyDown(debugResetKey)) ResetProgress();
 
-        TickQuickRestartInput(resetModifier);
+        TickUndoInput();
         TickShotDetection();
         TickDragHint();
         TickTimer();
         TickLiveScore();
-    }
-
-    /// <summary>
-    /// Player-facing restart for a bad shot. Purple must be held for one second;
-    /// R is an editor/desktop fallback, while Shift+R keeps its existing full
-    /// campaign-reset meaning. Holding the button across a modal or level change
-    /// is consumed until release, preventing an accidental restart on the next
-    /// playable frame.
-    /// </summary>
-    void TickQuickRestartInput(bool resetModifier)
-    {
-        bool held = ArcadeInputAdapter.GetButton(quickRestartButton)
-            || (!resetModifier && Input.GetKey(debugResetKey));
-
-        if (!held)
-        {
-            _quickRestartHoldElapsed = 0f;
-            _quickRestartConsumedForCurrentHold = false;
-            return;
-        }
-
-        if (!QuickRestartAvailable)
-        {
-            _quickRestartHoldElapsed = 0f;
-            _quickRestartConsumedForCurrentHold = true;
-            return;
-        }
-
-        if (_quickRestartConsumedForCurrentHold) return;
-
-        _quickRestartHoldElapsed += Time.unscaledDeltaTime;
-        float requiredHold = Mathf.Max(0.35f, quickRestartHoldSeconds);
-        if (_quickRestartHoldElapsed < requiredHold) return;
-
-        _quickRestartHoldElapsed = requiredHold;
-        _quickRestartConsumedForCurrentHold = true;
-        RestartCurrentLevel();
     }
 
     /// <summary>Watch for a "stopped → moving" transition; count that as a shot.</summary>
@@ -485,6 +448,7 @@ public class LevelManager : MonoBehaviour
     // valuable without blocking players who need extra low-power adjustments.
     void OnMissedShot()
     {
+        if (bestShotReplay != null) bestShotReplay.CancelRecording();
         if (_levelFailed || _isTransitioning) return;
 
         if (!useShotLives)
@@ -556,14 +520,14 @@ public class LevelManager : MonoBehaviour
 
     /// <summary>
     /// Public hook for a future on-screen Restart button. Resets the current
-    /// level's puck, rails, score pickups, strokes and hearts, while preserving
-    /// campaign totals, Continue credits and the remaining timer.
+    /// level's puck, rails, score pickups, strokes, hearts and full timer, while preserving
+    /// campaign totals and Continue credits.
     /// </summary>
     public void RestartCurrentLevel()
     {
         if (_isTransitioning || _levelFailed || !_timerActive
             || _timeUpTriggered || _timeRemaining <= 0f) return;
-        RestartCurrentLevelPreservingTimer(_timeRemaining, "RESTARTED!");
+        RestartCurrentLevelPreservingTimer(GetTimeLimitForLevel(_currentIndex), "RESTARTED!");
     }
 
     void RestartCurrentLevelPreservingTimer(float remaining, string banner)
@@ -624,22 +588,14 @@ public class LevelManager : MonoBehaviour
     /// Resolves one terminal failure. The leaderboard is shown once, then the
     /// Luxodd Continue transaction is opened. Continue restarts the current
     /// level with its full authored timer; End returns to the Luxodd host.
-    /// A matching in-game prompt is used when running standalone.
+    /// Without the arcade host, the session ends after the leaderboard.
     /// </summary>
     IEnumerator ShowTerminalLeaderboardAndOfferContinue(string reason)
     {
-        // Level 1 is the player's onboarding moment. The first terminal failure
-        // earns one encouraging retry before any leaderboard or paid Luxodd flow.
-        if (_currentIndex == 0 && LevelOneSecondChanceAvailable
-            && levelFailedPanel != null)
-        {
-            yield return ShowLevelOneSecondChance();
-            yield break;
-        }
-
-        bool leaderboardFinished = false;
         int visibleScore = Mathf.Max(_campaignTotalScore, _displayedScore);
-
+        if (bestShotReplay != null && bestShotReplay.TryShow(_mainCam, null))
+            while (bestShotReplay.IsShowing) yield return null;
+        bool leaderboardFinished = false;
         if (luxoddBridge != null)
         {
             luxoddBridge.ShowLeaderboard(visibleScore, reason,
@@ -647,26 +603,15 @@ public class LevelManager : MonoBehaviour
         }
         else if (leaderboardPanel != null)
         {
-            var localEntry = new[]
-            {
-                new LeaderboardPanel.LeaderboardData
-                {
-                    rank = 1,
-                    playerName = "YOU",
-                    score = visibleScore
-                }
-            };
-            leaderboardPanel.Show(localEntry, 1, visibleScore, "YOU", reason,
+            leaderboardPanel.Show(null, 0, visibleScore, "YOU", reason,
                 () => leaderboardFinished = true);
         }
         else
         {
-            Debug.LogWarning("[LevelManager] No LeaderboardPanel found; continuing the session flow without it.");
+            Debug.LogError("[LevelManager] Terminal leaderboard is not wired.");
             leaderboardFinished = true;
         }
-
         while (!leaderboardFinished) yield return null;
-
         BucaInGameTransactionController transactions =
             BucaInGameTransactionController.Instance;
         if (transactions != null && transactions.PlatformTransactionsExpected
@@ -694,16 +639,10 @@ public class LevelManager : MonoBehaviour
                 () => { continueSelected = true; decisionFinished = true; },
                 () => { decisionFinished = true; });
         }
-        else if (levelFailedPanel != null)
-        {
-            // Editor/standalone fallback mirrors the cabinet choice so the
-            // flow never silently exits merely because no host is connected.
-            levelFailedPanel.ShowContinueChoice(reason,
-                () => { continueSelected = true; decisionFinished = true; },
-                () => { decisionFinished = true; });
-        }
         else
         {
+            // Local cabinet retry rebuilds the attempt; hosted retries above
+            // remain owned by Luxodd's Continue transaction.
             EndCurrentSession();
             yield break;
         }
@@ -898,7 +837,7 @@ public class LevelManager : MonoBehaviour
 
     void TickTimer()
     {
-        if (!_timerActive || _isTransitioning || _obstacleIntroActive || _timeUpTriggered) return;
+        if (_rewindingShot || !_timerActive || _isTransitioning || _obstacleIntroActive || (_obstacleIntro != null && _obstacleIntro.IsShowing) || _timeUpTriggered) return;
 
         float prev = _timeRemaining;
         _timeRemaining -= Time.deltaTime;
@@ -1073,14 +1012,21 @@ public class LevelManager : MonoBehaviour
 
     void LateUpdate()
     {
-        if (_mainCam != null)
+        if (_mainCam != null && !BoardCoachTutorial.IsActive)
         {
-            // Smooth follow offset
+            // Follow moving shots, then ease back to the aiming view.
+            bool trackShot = cinematicGameplayFollow && (_rewindingShot || (GameplayInputAllowed &&
+                puckRigidbody != null && puckRigidbody.linearVelocity.sqrMagnitude > .04f));
+            _shotCameraBlend = Mathf.MoveTowards(_shotCameraBlend, trackShot ? 1f : 0f, Time.deltaTime / (trackShot ? .65f : 1.2f));
+            float shotBlend = Mathf.SmoothStep(0f, 1f, _shotCameraBlend);
             Vector3 target = Vector3.zero;
             if (puck != null)
             {
                 Vector3 p = puck.transform.position;
-                target = new Vector3(p.x * followStrength, 0f, p.z * followStrength * 0.7f);
+                Vector3 original = new Vector3(p.x * followStrength, 0f, p.z * followStrength * .7f);
+                Vector3 cinematic = new Vector3(Mathf.Clamp(p.x * .48f,-1.8f,1.8f), 0f,
+                    Mathf.Clamp(p.z * .48f * .7f,-2.2f,2.2f));
+                target = Vector3.Lerp(original, cinematic, shotBlend);
             }
             _followOffset = Vector3.SmoothDamp(_followOffset, target, ref _followVel, followSmoothTime);
 
@@ -1115,11 +1061,11 @@ public class LevelManager : MonoBehaviour
 
         // FOV kick (win/death) — exponentially eased toward target, then
         // target decays to 0 so the camera returns to base FOV on its own.
-        if (_mainCam != null)
+        if (_mainCam != null && !BoardCoachTutorial.IsActive)
         {
             _fovOffsetTarget = Mathf.MoveTowards(_fovOffsetTarget, 0f, Time.deltaTime * 8f);
             _fovOffset = Mathf.SmoothDamp(_fovOffset, _fovOffsetTarget, ref _fovOffsetVel, 0.18f);
-            _mainCam.fieldOfView = _baseFov + _fovOffset;
+            _mainCam.fieldOfView = _baseFov + _fovOffset - 3f * Mathf.SmoothStep(0f,1f,_shotCameraBlend);
         }
 
         // Drive edge glow based on puck state
@@ -1143,6 +1089,10 @@ public class LevelManager : MonoBehaviour
     /// </summary>
     void LoadLevelInternal(int index, bool resetTimer, bool notifyLuxodd, float preservedTime)
     {
+        if(heartRewardPresentation!=null) heartRewardPresentation.Clear();
+        CancelShotRewind();
+        _undoShots.Clear();
+        if (comboSign != null) comboSign.Hide();
         if (index < 0) return;
         if (levelPrefabs == null || index >= levelPrefabs.Length) return;
 
@@ -1162,6 +1112,7 @@ public class LevelManager : MonoBehaviour
 
         PlayerPrefs.SetInt(PrefKey, _currentIndex);
         PlayerPrefs.Save();
+        if(luxoddBridge!=null) luxoddBridge.SaveUserState();
 
         PositionPuckAtStart();
         _shotCount = 0;
@@ -1281,6 +1232,7 @@ public class LevelManager : MonoBehaviour
     /// </summary>
     void BeginObstacleIntroForCurrentLevel()
     {
+        if (_obstacleIntro != null && _obstacleIntro.IsShowing) { _obstacleIntroActive=true; return; }
         _obstacleIntroActive = false;
         if (_obstacleIntro == null || _currentInstance == null) return;
 
@@ -1374,11 +1326,13 @@ public class LevelManager : MonoBehaviour
         else if (recentAssist)
             comboType = 1; // NICE SAVE
 
-        PlayWinBurst(burstPos);
-        StartCoroutine(AnimateWinRing(burstPos));
-        ShakeCamera(0.25f, 0.35f);
-        if (comboType != 4)
-            FlashScreen(new Color(0.55f, 0.95f, 1f), 0.35f, 0.35f);
+        if(premiumWinCelebration==null)
+        {
+            PlayWinBurst(burstPos);
+            StartCoroutine(AnimateWinRing(burstPos));
+            ShakeCamera(0.25f, 0.35f);
+            if(comboType!=4) FlashScreen(new Color(0.55f,0.95f,1f),.35f,.35f);
+        }
         if (AudioManager.Instance != null)
         {
             AudioManager.Instance.SetMagnetLoopActive(false);
@@ -1387,7 +1341,7 @@ public class LevelManager : MonoBehaviour
         // Use familiar golf language for the main result. Rail and assist
         // bonuses still affect scoring, but they no longer hide the stroke result.
         int starStrokes = GetThreeStarStrokesForLevel(_currentIndex);
-        if (comboType == 4 && holeInOneCelebration != null)
+        if (premiumWinCelebration == null && comboType == 4 && holeInOneCelebration != null)
         {
             // No flat Canvas callout for a hole-in-one. The award appears in
             // the game world above the hole and uses the live puck's 3D mesh.
@@ -1405,7 +1359,7 @@ public class LevelManager : MonoBehaviour
         }
 
         // FOV zoom-in during win sequence
-        if (winFovKick != 0f) StartCoroutine(KickFov(winFovKick, fovKickDuration));
+        if (premiumWinCelebration == null && winFovKick != 0f) StartCoroutine(KickFov(winFovKick, fovKickDuration));
 
         // Calculate score via the unified formula.
         var score = ScoreCalculator.Calculate(
@@ -1415,6 +1369,8 @@ public class LevelManager : MonoBehaviour
 
         // Roll in pickup bonuses collected during the level
         score.total += _bonusScoreThisLevel;
+        if(comboSign!=null) { comboSign.Hide(); if(comboType==4 && premiumWinCelebration==null) comboSign.ShowHoleInOne(); }
+        if(premiumWinCelebration!=null) premiumWinCelebration.Play(burstPos, comboType==4);
 
         // Persist best stars + best score (monotonic — never decrease).
         int prevBestStars = PlayerPrefs.GetInt(PrefLevelStars + _currentIndex, 0);
@@ -1488,7 +1444,8 @@ public class LevelManager : MonoBehaviour
         if (puckTrail != null) puckTrail.emitting = true;         // trail draws the spiral arc
 
         // Camera eases toward the hole during the swirl, then back to rest.
-        StartCoroutine(VictoryCameraPush(holePos, shrinkDur + 0.15f));
+        if(comboType==4 && premiumWinCelebration!=null) StartCoroutine(VictoryCameraPush(holePos, premiumWinCelebration.Duration));
+        else if(premiumWinCelebration==null) StartCoroutine(VictoryCameraPush(holePos, shrinkDur + 0.15f));
 
         while (t < shrinkDur && puck != null)
         {
@@ -1508,7 +1465,10 @@ public class LevelManager : MonoBehaviour
         if (puckTrail != null) puckTrail.emitting = false;
         if (puckShadow != null) puckShadow.localScale = Vector3.zero;
 
-        float minimumWinDisplay = comboType == 4 && holeInOneCelebration != null
+        // Retain the real successful flight and its sink, before loading another board.
+        if (bestShotReplay != null) bestShotReplay.CommitGoal(_shotCount);
+
+        float minimumWinDisplay = premiumWinCelebration!=null ? premiumWinCelebration.Duration : comboType==4 && comboSign!=null ? 2.4f : comboType == 4 && holeInOneCelebration != null
             ? holeInOneCelebration.MinimumDisplaySeconds
             : transitionDelay;
         yield return new WaitForSeconds(Mathf.Max(0f,
@@ -1696,6 +1656,7 @@ public class LevelManager : MonoBehaviour
 
     IEnumerator DeathSequence()
     {
+        if (bestShotReplay != null) bestShotReplay.CancelRecording();
         _isTransitioning = true;
         float deathStartedAt = Time.unscaledTime;
 
@@ -1913,10 +1874,11 @@ public class LevelManager : MonoBehaviour
         _comboChain++;
         int mult = Mathf.Min(_comboChain, 5);
         AddBonusScore(ComboBasePoints * mult, worldPos);     // additive bonus + spark
-        if (mult >= 2 && mult > _comboShownMult && comboText != null)
+        if (mult >= 2 && mult > _comboShownMult && (comboSign != null || comboText != null))
         {
             _comboShownMult = mult;
-            comboText.Show($"COMBO  ×{mult}!", ComboColor(mult));
+            if(comboSign!=null) comboSign.Show(mult);
+            else comboText.Show($"{mult}X BONUS!", ComboColor(mult));
         }
     }
 
@@ -1965,21 +1927,21 @@ public class LevelManager : MonoBehaviour
         return 1;
     }
 
-    /// <summary>Every level uses the same clear 30-second countdown.</summary>
+    /// <summary>Returns the authored time allowance for this level.</summary>
     float GetTimeLimitForLevel(int index)
     {
+        // Every campaign level uses its authored learning/challenge budget.
+        if(index>=0 && index<30 && levelSettings!=null && index<levelSettings.Length && levelSettings[index]!=null)
+            return Mathf.Max(1f,levelSettings[index].timeLimit);
         return 30f;
     }
 
-    /// <summary>
-    /// Legacy fallback used only when Use Shot Lives is explicitly enabled.
-    /// Normal BUCA gameplay has no heart/shot limit.
-    /// </summary>
+    /// <summary>Authored move allowance; index is zero-based.</summary>
     int GetMaxLivesForLevel(int index)
     {
-        // One authoritative campaign table: Levels 1-24 use three hearts;
-        // the final chapter uses four hearts.
-        return index >= 24 ? 4 : 3;
+        if(index>=0 && levelSettings!=null && index<levelSettings.Length && levelSettings[index]!=null)
+            return Mathf.Max(1,levelSettings[index].maxLives);
+        return index>=0 && index<30 ? Mathf.Max(5,index+1) : Mathf.Max(1,maxLives);
     }
 
     /// <summary>
@@ -1988,13 +1950,7 @@ public class LevelManager : MonoBehaviour
     /// </summary>
     string FormatStrokeHud()
     {
-        int par = GetThreeStarStrokesForLevel(_currentIndex);
-        int toPar = _shotCount - par;
-        string relation = _shotCount == 0 ? "—" : FormatToPar(toPar);
-        string relationColor = toPar < 0 ? "#5CFFB0" : toPar == 0 ? "#64E9FF" : "#FF637D";
-        return $"<color=#B8E3F0>STROKES</color><pos=150><color=#FFFFFF>{_shotCount}</color>\n" +
-               $"<color=#B8E3F0>PAR</color><pos=150><color=#FFD95A>{par}</color>\n" +
-               $"<color=#B8E3F0>IF SUNK</color><pos=150><color={relationColor}>{relation}</color>";
+        return $"<color=#B8E3F0>SHOTS</color><pos=150><color=#FFFFFF>{_shotCount}</color>";
     }
 
     static string FormatScoreHud(int score)
@@ -2069,6 +2025,11 @@ public class LevelManager : MonoBehaviour
     {
         if (puck == null || _currentInstance == null) return;
 
+        // Winning/respawn animations may leave the previous puck at zero scale.
+        // Restore its authored size before a new tutorial copies its renderers;
+        // growing the real puck afterwards cannot repair a zero-sized demo copy.
+        puck.transform.localScale = Vector3.one * puckSize;
+
         var startMarker = _currentInstance.transform.Find("PuckStart");
         Vector3 startPos = startMarker != null
             ? new Vector3(startMarker.position.x, puckSize * 0.5f, startMarker.position.z)
@@ -2141,6 +2102,15 @@ public class LevelManager : MonoBehaviour
     /// Called by ScorePickup when the puck collects an orb. Adds to
     /// this level's bonus total and fires a small spark at the position.
     /// </summary>
+    public void AddStarHeart(Vector3 worldPosition)
+    {
+        if(!useShotLives) return;
+        _lives++;
+        _currentMaxLives=Mathf.Max(_currentMaxLives,_lives);
+        UpdateLivesDisplay();
+        if(heartRewardPresentation!=null) heartRewardPresentation.Show(worldPosition,_lives);
+    }
+
     public void AddBonusScore(int amount, Vector3 worldPos)
     {
         _bonusScoreThisLevel += amount;

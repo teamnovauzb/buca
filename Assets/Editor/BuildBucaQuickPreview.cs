@@ -5,7 +5,9 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
+#if UNITY_WEBGL
 using UnityEditor.WebGL;
+#endif
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
@@ -20,6 +22,8 @@ public static class BuildBucaQuickPreview
 
     public static void BuildBatch()
     {
+        if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL))
+            throw new BuildFailedException("Install WebGL Build Support in Unity Hub before building the Web preview.");
         var scenes = EditorBuildSettings.scenes
             .Where(scene => scene.enabled && !string.IsNullOrEmpty(scene.path))
             .Select(scene => scene.path)
@@ -31,10 +35,14 @@ public static class BuildBucaQuickPreview
             "Builds", "Buca-Quick-Preview-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
         Directory.CreateDirectory(output);
 
+#if UNITY_WEBGL
         var previousOptimization = UserBuildSettings.codeOptimization;
+#endif
         try
         {
+#if UNITY_WEBGL
             UserBuildSettings.codeOptimization = WasmCodeOptimization.BuildTimes;
+#endif
             var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
                 scenes = scenes,
@@ -48,7 +56,9 @@ public static class BuildBucaQuickPreview
         }
         finally
         {
+#if UNITY_WEBGL
             UserBuildSettings.codeOptimization = previousOptimization;
+#endif
         }
     }
 }

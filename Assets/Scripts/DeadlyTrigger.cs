@@ -10,12 +10,19 @@ public class DeadlyTrigger : MonoBehaviour
 {
     bool _consumed;
 
-    void OnTriggerEnter(Collider other)
+    void OnEnable() { _consumed=false; }
+    void OnDisable() { CancelInvoke(nameof(Rearm)); _consumed=false; }
+    void OnTriggerEnter(Collider other) => TryKill(other);
+    void OnTriggerStay(Collider other) => TryKill(other);
+
+    void TryKill(Collider other)
     {
         if (_consumed) return;
         var rb = other.attachedRigidbody;
-        if (rb == null || rb.GetComponent<PuckController>() == null) return;
-        if (LevelManager.Instance == null) return;
+        if (rb == null || (rb.GetComponent<PuckController>() == null && rb.GetComponent<TutorialPracticePuck>() == null)) return;
+        var practicePuck=rb.GetComponent<TutorialPracticePuck>();
+        if(practicePuck!=null) { practicePuck.practice.ResetShot(); return; }
+        if (LevelManager.Instance == null || LevelManager.Instance.IsRewindingShot) return;
 
         _consumed = true;
         LevelManager.Instance.KillPuck();

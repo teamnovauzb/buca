@@ -29,7 +29,7 @@ public class KickerBumper : MonoBehaviour
     void OnCollisionEnter(Collision c)
     {
         var rb = c.rigidbody;
-        if (rb == null || rb.GetComponent<PuckController>() == null) return;   // only the puck
+        if (rb == null || (rb.GetComponent<PuckController>() == null && rb.GetComponent<TutorialPracticePuck>() == null)) return;   // only the puck
         if (Time.time - _lastHit < Cooldown) return;
         _lastHit = Time.time;
 
@@ -48,6 +48,6 @@ public class KickerBumper : MonoBehaviour
         // The puck's own OnCollisionEnter already sparks, lights this rail, and
         // plays the wall-hit sound (via LevelManager.NotifyWallHit), so we don't
         // duplicate those — just add a little extra camera pop unique to the bumper.
-        if (LevelManager.Instance != null) LevelManager.Instance.ShakeCamera(0.16f, 0.16f);
+        if (rb.GetComponent<TutorialPracticePuck>()==null && LevelManager.Instance != null) LevelManager.Instance.ShakeCamera(0.16f, 0.16f);
     }
 }

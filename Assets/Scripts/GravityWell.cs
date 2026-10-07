@@ -18,10 +18,12 @@ public class GravityWell : MonoBehaviour
     [Tooltip("If true, repels instead of attracts (push the puck away).")]
     public bool repel = false;
 
+    public Rigidbody practicePuck;
     Rigidbody _puckRb;
 
     void FixedUpdate()
     {
+        if(practicePuck!=null) _puckRb=practicePuck;
         if (_puckRb == null)
         {
             if (LevelManager.Instance == null || LevelManager.Instance.Puck == null) return;
@@ -47,6 +49,11 @@ public class GravityWell : MonoBehaviour
         Vector3 dir = to / dist;
         if (repel) dir = -dir;
         _puckRb.AddForce(dir * strength * f, ForceMode.Acceleration);
+        if(practicePuck!=null)
+        {
+            practicePuck.GetComponent<TutorialPracticePuck>().practice.UseMechanic();
+            return;
+        }
 
         // Audio: low pulsing hum, volume = pull strength
         if (AudioManager.Instance != null)

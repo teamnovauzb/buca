@@ -153,7 +153,7 @@ public class TutorialController : MonoBehaviour
     }
 
     // ─────────────────────────────────────────────────────────
-    // Arcade demo: joystick → Red hold + power fill → release
+    // Arcade demo: joystick → Black hold + power fill → release
     // ─────────────────────────────────────────────────────────
     IEnumerator PlayArcadeDemo()
     {

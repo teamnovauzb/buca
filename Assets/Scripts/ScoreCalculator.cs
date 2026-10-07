@@ -29,26 +29,12 @@ public static class ScoreCalculator
     /// <summary>Returns the familiar golf name for a completed level.</summary>
     public static string GetGolfResultName(int strokes, int par)
     {
-        int safeStrokes = Mathf.Max(1, strokes);
-        int safePar = Mathf.Max(1, par);
-        if (safeStrokes == 1) return "HOLE IN ONE";
-
-        int difference = safeStrokes - safePar;
-        if (difference <= -3) return "ALBATROSS";
-        if (difference == -2) return "EAGLE";
-        if (difference == -1) return "BIRDIE";
-        if (difference == 0) return "PAR";
-        if (difference == 1) return "BOGEY";
-        if (difference == 2) return "DOUBLE BOGEY";
-        if (difference == 3) return "TRIPLE BOGEY";
-        return $"{difference} OVER PAR";
+        return strokes == 1 ? "HOLE IN ONE" : "LEVEL COMPLETE";
     }
 
     public static string GetGolfScore(int strokes, int par)
     {
-        int difference = Mathf.Max(1, strokes) - Mathf.Max(1, par);
-        if (difference == 0) return "E";
-        return difference > 0 ? $"+{difference}" : difference.ToString();
+        return Mathf.Max(1, strokes) + " SHOTS";
     }
 
     /// <summary>
@@ -57,11 +43,7 @@ public static class ScoreCalculator
     /// </summary>
     public static string FormatStrokesToPar(int difference)
     {
-        if (difference == 0) return "EVEN PAR";
-        int amount = Mathf.Abs(difference);
-        return difference < 0
-            ? $"{amount} UNDER PAR"
-            : $"{amount} OVER PAR";
+        return string.Empty;
     }
 
     /// <param name="strokes">Shots the player took.</param>

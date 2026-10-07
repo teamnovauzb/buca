@@ -83,7 +83,7 @@ public sealed class PremiumStatsDisplay3D : MonoBehaviour
         _camera.allowMSAA = true;
         _camera.targetTexture = _texture;
 
-        string[] names = { "STROKES", "PAR", "SCORE" };
+        string[] names = { "SHOTS", "", "SCORE" };
         for (int row = 0; row < names.Length; row++)
         {
             _labels[row] = CreateStack(names[row] + " 3D", font, LabelFace);
@@ -150,7 +150,8 @@ public sealed class PremiumStatsDisplay3D : MonoBehaviour
     {
         if (_rig == null) return;
         FitStack(_values[0], strokes.ToString(), 0.80f, 0.57f, 0.93f, 0.49f);
-        FitStack(_values[1], par.ToString(), 0.80f, 0f, 0.93f, 0.49f);
+        FitStack(_values[1], "", 0.80f, 0f, 0.93f, 0.49f);
+        FitStack(_labels[1], "", -1.91f, 0f, 2.35f, 0.39f);
         FitStack(_values[2], score.ToString("N0"), 0.80f, -0.57f, 1.10f, 0.49f);
     }
 

@@ -293,8 +293,6 @@ public static class LevelPrefabGenerator
         Base(r, 6); Puck(r, 0f, -5.5f); Hole(r, 2.6f, 5.2f, 0.85f);
         WZ(r, "Corridor_L", -1.5f, -0.5f, 7f);
         WZ(r, "Corridor_R", 1.5f, -0.5f, 7f);
-        WX(r, "Deadly_1", -0.8f, 0.3f, 1.6f, true);
-        WX(r, "Deadly_2", 0.8f, 2.5f, 1.6f, true);
         WA(r, "Mouth_L", -2.4f, -4.2f, 2.2f, 35f);
         WA(r, "Mouth_R", 2.4f, -4.2f, 2.2f, -35f);
         WX(r, "Exit_Lip", -0.5f, 4.4f, 2f);
@@ -303,7 +301,6 @@ public static class LevelPrefabGenerator
     static void L15_MasterBuca(GameObject r)      // 15. Final boss — all mechanics (fair)
     {
         Base(r, 6); Puck(r, 2.8f, -5.6f); Hole(r, -3f, 5f, 0.8f);
-        WX(r, "Deadly_Guard", -1.4f, 4f, 2.2f, true);
         WZ(r, "Hole_Lip", -1.4f, 5f, 1.6f);
         WX(r, "Lower_Channel", 0f, -3.2f, 2f);
         Wind(r, 0.5f, 1.5f, 8f, 7f, -1f, 0f, 6f);
@@ -378,26 +375,18 @@ public static class LevelPrefabGenerator
         Base(r, 6); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.3f, 0.8f);
         MovWall(r, -0.7f, -0.5f, 2.6f, 'X', 2.6f, 2f, 0f);
         MovWall(r, 0.7f, 2.5f, 2.6f, 'X', 2.6f, 2f, 1f);
-        WZ(r, "D_L", -2.4f, 1f, 4f, true);
-        WZ(r, "D_R", 2.4f, 1f, 4f, true);
     }
 
     static void L23_GravityBend(GameObject r)     // 23. gravity well bends past a deadly wall
     {
         Base(r, 0); Puck(r, 0f, -5.5f); Hole(r, 2.8f, 5.2f, 0.8f);
         WZ(r, "Wall_L", -1.5f, 0f, 6f);
-        WX(r, "Deadly", -0.5f, 3f, 2f, true);
         WA(r, "Exit", 1.5f, 4.5f, 2.5f, -35f);
-        Grav(r, 1.5f, 1f, 3f, 13f);
     }
 
     static void L24_DeadlyCorridor(GameObject r)  // 24. weave around a deadly diamond
     {
         Base(r, 1); Puck(r, 0f, -5.5f); Hole(r, 0f, 5.4f, 0.78f);
-        WA(r, "Dia_BL", -1.2f, -1.2f, 2.2f, 45f, true);
-        WA(r, "Dia_BR", 1.2f, -1.2f, 2.2f, -45f, true);
-        WA(r, "Dia_TL", -1.2f, 1.8f, 2.2f, -45f, true);
-        WA(r, "Dia_TR", 1.2f, 1.8f, 2.2f, 45f, true);
         WZ(r, "Lane_L", -2.7f, 0.3f, 4f);
         WZ(r, "Lane_R", 2.7f, 0.3f, 4f);
     }
@@ -428,8 +417,6 @@ public static class LevelPrefabGenerator
     {
         Base(r, 4); Puck(r, 0f, -5.6f); Hole(r, 0f, 5.4f, 0.75f);
         RotWall(r, 0f, 0f, 4f, 52f);
-        WX(r, "Guard_L", -2.9f, 2.6f, 2.4f, true);
-        WX(r, "Guard_R", 2.9f, 2.6f, 2.4f, true);
         WZ(r, "Hole_Lip_L", -1f, 5f, 1.6f);
         WZ(r, "Hole_Lip_R", 1f, 5f, 1.6f);
     }
@@ -439,7 +426,6 @@ public static class LevelPrefabGenerator
         Base(r, 5); Puck(r, 0f, -5.6f); Hole(r, 0f, 5.3f, 0.75f);
         WX(r, "Lower_Divide", -1.3f, -1.5f, 6f);  // doorway on the right
         WX(r, "Upper_Divide", 1.3f, 2f, 6f);       // doorway on the left
-        MovWall(r, 0f, 0.3f, 2.2f, 'X', 2.5f, 2.2f, 0f, true);
         WA(r, "Hole_Funnel_L", -1.2f, 4.4f, 2f, 35f);
         WA(r, "Hole_Funnel_R", 1.2f, 4.4f, 2f, -35f);
     }
@@ -449,7 +435,6 @@ public static class LevelPrefabGenerator
         Base(r, 6); Puck(r, -2.8f, -5.6f); Hole(r, 2.8f, 5.4f, 0.72f);
         MovWall(r, 0f, 1f, 3.6f, 'X', 3f, 2.6f, 0f);
         Wind(r, 0f, 3.8f, 8f, 2f, 1f, 0f, 7f);
-        WA(r, "D_Bar", 0f, -1.8f, 3f, 35f, true);
         WZ(r, "Edge_L", -4f, 1f, 3f);
     }
 
@@ -458,9 +443,6 @@ public static class LevelPrefabGenerator
         Base(r, 6); Puck(r, 0f, -5.8f); Hole(r, 0f, 5.6f, 0.7f);
         RotWall(r, -1.6f, -1f, 2.2f, 70f);
         RotWall(r, 1.6f, 1.5f, 2.2f, -70f);
-        Grav(r, 0f, 3.8f, 2.6f, 11f);
-        WX(r, "D_L", -1.3f, 4.6f, 1.8f, true);
-        WX(r, "D_R", 1.3f, 4.6f, 1.8f, true);
         Tele(r, -3.4f, -3f, 3.2f, 0.5f);
         Wind(r, 0f, 1.5f, 7f, 2f, 1f, 0f, 5f);
     }
@@ -571,7 +553,8 @@ public static class LevelPrefabGenerator
         pad.transform.localScale = new Vector3(1.2f, 0.08f, 0.4f);
         if (_padMat != null) pad.GetComponent<MeshRenderer>().sharedMaterial = _padMat;
         pad.GetComponent<Collider>().isTrigger = true;
-        pad.AddComponent<BouncePad>().launchSpeed = launchSpeed;
+        var launcher=pad.AddComponent<BouncePad>();launcher.launchSpeed = launchSpeed;
+        SpringLauncherBaker.Apply(launcher);
         return pad;
     }
 
@@ -586,7 +569,9 @@ public static class LevelPrefabGenerator
         ring.transform.localScale = new Vector3(0.3f, 0.4f, 1.4f);
         if (_ringMat != null) ring.GetComponent<MeshRenderer>().sharedMaterial = _ringMat;
         ring.GetComponent<Collider>().isTrigger = true;
-        ring.AddComponent<SpeedBoost>().boostAmount = boostAmount;
+        var boost = ring.AddComponent<SpeedBoost>();
+        boost.boostAmount = boostAmount;
+        MintBoostVisualBaker.Apply(boost);
         return ring;
     }
 
@@ -653,7 +638,7 @@ public static class LevelPrefabGenerator
         disc.transform.localScale = new Vector3(1.0f, 0.05f, 1.0f);
         if (_ringMat != null) disc.GetComponent<MeshRenderer>().sharedMaterial = _ringMat;
         disc.GetComponent<Collider>().isTrigger = true;
-        disc.AddComponent<Teleporter>();
+        BrassPortalBaker.Apply(disc.AddComponent<Teleporter>());
         return disc;
     }
 

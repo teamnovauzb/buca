@@ -40,7 +40,7 @@ public class MovingWall : MonoBehaviour
     {
         // MovePosition is the kinematic-safe way to translate a rigidbody
         // so the physics engine picks up the motion for puck collision.
-        _rb.MovePosition(GetPredictedPosition(Time.time));
+        _rb.MovePosition(GetPredictedPosition(BoardMechanicClock.Time));
     }
 
     /// <summary>

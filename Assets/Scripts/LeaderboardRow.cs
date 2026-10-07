@@ -26,6 +26,7 @@ public class LeaderboardRow : MonoBehaviour
     public TMP_Text rowText;
 
     public RectTransform rectTransform;
+    public bool IsPlayerRow { get; private set; }
 
     [Tooltip("Tint painted behind the player's own row (theme hot pink #FF2E88).")]
     public Color playerRowTintColor = new Color(1f, 0.18f, 0.53f, 0.18f);
@@ -37,6 +38,8 @@ public class LeaderboardRow : MonoBehaviour
 
     public void Clear()
     {
+        IsPlayerRow = false;
+        gameObject.SetActive(false);
         SetAlpha(rankText, 0f);
         SetAlpha(nameText, 0f);
         SetAlpha(scoreText, 0f);
@@ -56,13 +59,15 @@ public class LeaderboardRow : MonoBehaviour
     /// </summary>
     public void Populate(int rank, string playerName, int score, Color textColor, bool isPlayerRow)
     {
+        IsPlayerRow = isPlayerRow;
+        gameObject.SetActive(true);
         string n = string.IsNullOrEmpty(playerName) ? "---" : playerName;
-        if (n.Length > 16) n = n.Substring(0, 16);
         n = n.ToUpperInvariant();
 
         // Legacy combined mode — only if the separated fields aren't present.
         if (rowText != null && nameText == null && scoreText == null)
         {
+            if (n.Length > 16) n = n.Substring(0, 15) + "…";
             rowText.text = $"#{rank,-3} {n}<pos=550><mspace=0.55em>{score,6}</mspace>";
             var rc = textColor; rc.a = 1f; rowText.color = rc;
             return;
@@ -86,11 +91,13 @@ public class LeaderboardRow : MonoBehaviour
         // No medal badge in the minimal layout — keep any legacy badge hidden.
         if (rankBadge != null)
         {
-            var c = rankBadge.color; c.a = 0f; rankBadge.color = c;
+            rankBadge.color = rank == 1 ? new Color(0.94f,0.69f,0.25f) :
+                rank == 2 ? new Color(0.78f,0.83f,0.82f) :
+                rank == 3 ? new Color(0.80f,0.49f,0.27f) : new Color(0.88f,0.73f,0.49f);
         }
         if (rowBackground != null)
         {
-            rowBackground.color = isPlayerRow ? playerRowTintColor : new Color(0f, 0f, 0f, 0f);
+            rowBackground.color = isPlayerRow ? playerRowTintColor : new Color(0.97f, 0.87f, 0.68f, 1f);
         }
     }
 

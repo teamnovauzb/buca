@@ -23,40 +23,43 @@ public class IcePatch : MonoBehaviour
     [Tooltip("Drag to restore on exit — the puck Rigidbody's normal Linear Damping (0.9).")]
     public float restoreDamping = 0.9f;
 
-    static int _activeCount;     // how many ice/mud patches the puck is currently inside
-    static Rigidbody _puck;
-    bool _counted;               // did THIS patch count the puck?
-
-    void OnTriggerEnter(Collider o)
+    static readonly System.Collections.Generic.Dictionary<Rigidbody, System.Collections.Generic.HashSet<IcePatch>> active = new();
+    readonly System.Collections.Generic.Dictionary<Collider,Rigidbody> contacts = new();
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetRegistry() => active.Clear();
+    void OnTriggerEnter(Collider other) => Track(other);
+    void OnTriggerStay(Collider other) => Track(other);
+    void Track(Collider other)
     {
-        var rb = o.attachedRigidbody;
-        if (rb == null || rb.GetComponent<PuckController>() == null) return;
-        if (_counted) return;
-        _puck = rb;
-        _activeCount++;
-        _counted = true;
-        rb.linearDamping = patchDamping;
+        var rb=other.attachedRigidbody;
+        if(rb==null || (rb.GetComponent<PuckController>()==null && rb.GetComponent<TutorialPracticePuck>()==null))return;
+        contacts[other]=rb;
+        if(!active.TryGetValue(rb,out var patches)){patches=new();active.Add(rb,patches);}
+        patches.Add(this);ApplyDamping(rb,patches);
     }
-
-    void OnTriggerExit(Collider o)
+    static void ApplyDamping(Rigidbody rb,System.Collections.Generic.HashSet<IcePatch> patches)
     {
-        var rb = o.attachedRigidbody;
-        if (rb == null || rb.GetComponent<PuckController>() == null) return;
+        float damping=0;
+        foreach(var patch in patches)if(patch!=null)damping=Mathf.Max(damping,patch.patchDamping);
+        if(rb!=null)rb.linearDamping=damping;
+    }
+    void OnTriggerExit(Collider other)
+    {
+        if(!contacts.TryGetValue(other,out var rb))return;
+        contacts.Remove(other);
+        foreach(var remaining in contacts.Values)if(remaining==rb)return;
         Release(rb);
     }
-
-    // If the level is unloaded (this object destroyed) while the puck is still on
-    // the ice, restore drag so the puck isn't left slippery in the next level.
-    void OnDisable()
-    {
-        if (_counted) Release(_puck);
-    }
-
     void Release(Rigidbody rb)
     {
-        if (!_counted) return;
-        _counted = false;
-        _activeCount = Mathf.Max(0, _activeCount - 1);
-        if (_activeCount == 0 && rb != null) rb.linearDamping = restoreDamping;
+        if(rb==null || !active.TryGetValue(rb,out var patches))return;
+        patches.Remove(this);
+        if(patches.Count==0){rb.linearDamping=restoreDamping;active.Remove(rb);}
+        else ApplyDamping(rb,patches);
+    }
+    void OnDisable()
+    {
+        foreach(var rb in new System.Collections.Generic.HashSet<Rigidbody>(contacts.Values))Release(rb);
+        contacts.Clear();
     }
 }

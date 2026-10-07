@@ -61,27 +61,7 @@ public class GameCompletePanel : MonoBehaviour
             statsText.rectTransform.sizeDelta = new Vector2(760f, 280f);
             statsText.fontSize = 48f;
             statsText.alignment = TextAlignmentOptions.Center;
-            if (totalPar > 0)
-            {
-                int toPar = totalStrokes - totalPar;
-                string golfScore = LevelManager.FormatToPar(toPar);
-                string relation = toPar == 0
-                    ? "EVEN PAR"
-                    : toPar < 0
-                        ? $"{Mathf.Abs(toPar)} UNDER PAR"
-                        : $"{toPar} OVER PAR";
-                string resultColor = toPar <= 0 ? "#FFD84D" : "#FF4D72";
-                statsText.text =
-                    $"<color=#75EDFF>FINAL GOLF SCORE</color>  " +
-                    $"<color={resultColor}>{golfScore}</color>\n" +
-                    $"<color=#DDF7FF>TOTAL STROKES  {totalStrokes}   •   COURSE PAR  {totalPar}</color>\n" +
-                    $"<color={resultColor}>{relation}</color>\n" +
-                    $"<color=#75EDFF>PUCK RATING  {totalStars} / {maxStars}</color>";
-            }
-            else
-            {
-                statsText.text = $"TOTAL STROKES  {totalStrokes}\nPUCK RATING  {totalStars} / {maxStars}";
-            }
+            statsText.text = $"TOTAL SHOTS  {totalStrokes}\nPUCK RATING  {totalStars} / {maxStars}";
         }
 
         LevelManager manager = LevelManager.Instance;

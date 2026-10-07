@@ -12,6 +12,7 @@ using UnityEngine.Video;
 public class LevelFailedPanel : MonoBehaviour
 {
     [Header("Prebuilt structure")]
+    public HangingTimeUp3D hangingTimeUp;
     public CanvasGroup group;
     public RectTransform card;
     public Button retryButton;
@@ -111,6 +112,16 @@ public class LevelFailedPanel : MonoBehaviour
         BeginShow();
     }
 
+    public void ShowTransactionRetry(System.Action retry, System.Action end)
+    {
+        _onRetry=retry; _onEnd=end; _sessionPrompt=true;
+        _timeUpSessionPrompt=true; // No automatic exit while the connection is unavailable.
+        _secondChancePrompt=false;
+        _sessionStatus="YOUR RUN IS PAUSED - TRY AGAIN";
+        ApplyCopy("COULD NOT CONNECT",_sessionStatus,"TRY AGAIN","END GAME");
+        BeginShow();
+    }
+
     public void ShowFirstLevelSecondChance(System.Action onRetry)
     {
         _onRetry = onRetry;
@@ -142,6 +153,15 @@ public class LevelFailedPanel : MonoBehaviour
 
     IEnumerator FadeIn()
     {
+        if(hangingTimeUp!=null && _timeUpSessionPrompt && IsTimeUpReason(titleText.text))
+        {
+            group.alpha=0; group.interactable=false; group.blocksRaycasts=false;
+            hangingTimeUp.Show();
+            while(hangingTimeUp.IsShowing && !hangingTimeUp.Ready) yield return null;
+            _choicesReady=true; _shownTime=Time.unscaledTime;
+            yield break;
+        }
+
         if (group != null)
         {
             group.alpha = 0f;
@@ -197,6 +217,7 @@ public class LevelFailedPanel : MonoBehaviour
 
     void Update()
     {
+        if(hangingTimeUp!=null && hangingTimeUp.IsShowing) return;
         if (!_shown || !_choicesReady) return;
         if (Time.unscaledTime - _shownTime < 0.35f) return;
 
@@ -208,6 +229,9 @@ public class LevelFailedPanel : MonoBehaviour
                   Input.GetKeyDown(KeyCode.Escape)))
             Exit();
     }
+
+    public void ContinueFromHanging() => Retry();
+    public void EndFromHanging() => Exit();
 
     void Retry()
     {
@@ -237,6 +261,7 @@ public class LevelFailedPanel : MonoBehaviour
 
     void HideImmediate()
     {
+        if(hangingTimeUp!=null) hangingTimeUp.Hide();
         _choicesReady = false;
         if (group != null)
         {

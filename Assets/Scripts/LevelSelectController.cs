@@ -178,17 +178,10 @@ public class LevelSelectController : MonoBehaviour
         // Uses unscaled time so a paused popup doesn't cheese the timer.
         TickIdleAutoClose();
 
-        // BACK = GREEN, RED, or WHITE button (or Escape).
-        // GREEN is the canonical cabinet back button, but on generic
-        // gamepads Luxodd's fallback maps Green→leftShoulder — so QA
-        // pressing B/Circle (which maps to Red) got nothing ("back button
-        // not working using game pad"). Red and White are unused inside
-        // the picker, so accepting all three is safe on cabinet AND fixes
-        // gamepad testing. (Skipped during the input-grace window.)
+        // Red is game Back; Green remains a compatibility shortcut.
         if (_inputGraceFramesAfterOpen <= 0 &&
             (ArcadeInputAdapter.GetButtonDown(ArcadeInputAdapter.Button.Green)
              || ArcadeInputAdapter.GetButtonDown(ArcadeInputAdapter.Button.Red)
-             || ArcadeInputAdapter.CancelDown()   // White
              || Input.GetKeyDown(KeyCode.Escape)))
         {
             Hide();
@@ -489,7 +482,7 @@ public class LevelSelectController : MonoBehaviour
                 {
                     int toPar = bestStrokes - par;
                     entry.bestTimeLabel.text =
-                        $"BEST {bestStrokes}\nPAR {par}  {LevelManager.FormatToPar(toPar)}";
+                        $"BEST {bestStrokes} SHOTS";
                     entry.bestTimeLabel.fontSize = 15f;
                     entry.bestTimeLabel.color = toPar <= 0
                         ? new Color(1f, 0.86f, 0.30f, 1f)

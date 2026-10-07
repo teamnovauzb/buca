@@ -1,0 +1,76 @@
+BUCA WEBGL LIGHTING PROTOTYPE — 7 OCTOBER 2026
+
+Scope
+An isolated gold-puck comparison scene. No production game rollout or deployment.
+Installed version: Unity 6000.5.0f1, URP / Shader Graph 17.5.0.
+The supplied request mentioned 6.3; the prototype uses the installed version.
+
+A: Existing gold-puck materials and yellow translucent shadow disc; saved Web
+quality pipeline with screen-space ambient occlusion (SSAO). That pipeline
+already disables real-time shadows.
+B: Editable Unlit Shader Graph with soft diffuse shading, a small specular
+highlight and rim; a saved soft contact-shadow texture. An isolated copy of
+the Web renderer disables SSAO. Real-time shadows remain disabled.
+Geometry, camera and light rig are identical between modes. Other board
+materials are retained as context; the custom shader is applied only to the puck.
+
+Build
+Succeeded, zero build errors. See build-result.txt.
+Build output: Builds/BucaLightingPrototype
+The build includes the project's StreamingAssets and is not a size benchmark.
+
+Browser verification
+Actual local WebGL build loaded in Google Chrome, Safari, and the Codex
+in-app browser on this Mac. A/B materials render successfully. Chrome and
+Safari were checked with movement enabled and close/board cameras.
+The contact shadow follows the moving puck. No pink/missing custom shader
+or render failure was observed. Captures are direct browser canvas PNGs.
+Chrome: chrome-current-close.png, chrome-prototype-close.png,
+        chrome-current-board.png, chrome-prototype-board.png
+Safari: safari-current-close.png, safari-prototype-close.png,
+        safari-current-board.png, safari-prototype-board.png
+
+Console notes
+Chrome and the in-app browser log the existing URP warning about the unused
+Edge Adaptive Spatial Upsampling / Blit FSR Upscaling shader. This occurs in
+both A and B. The camera has post-processing disabled and render scale is 1;
+the custom puck shader renders correctly. Investigate that pipeline warning
+separately before adopting this setup across the full game.
+Chrome initially logged an AudioContext gesture warning (resolved after
+interaction) and a missing favicon request (fixed in the comparison HTML).
+Safari was verified visually; its developer console was not enabled/read.
+
+Limits
+This is visual/functional prototype verification on one Mac, not an FPS,
+memory, sustained-performance or low-end-device benchmark. The harness
+preserves the WebGL drawing buffer for PNG captures; disable that option
+when profiling performance. The production-hosted game was not replaced.
+
+Isolation
+All 537 baseline production asset/settings hashes match after the build.
+See production-before.json and production-after-check.json.
+The game's WebGL template was restored to PROJECT:LuxoddTemplate.
+The Editor was left on the existing MainMenu scene, outside Play mode.
+
+Review
+Open http://127.0.0.1:8766/ while the local server is running.
+Use A / B, Motion, and Board view. Save capture writes PNGs under this folder.
+If the server has stopped, run from the project root:
+  python3 output/lighting-prototype/serve.py
+
+Rebuild
+Unity menu: RealBuca > Lighting Prototype > Build WebGL comparison
+Graph: Assets/Prototypes/WebLighting/PuckStylized.shadergraph
+Scene: Assets/Prototypes/WebLighting/LightingComparison.unity
+Builder: Assets/Editor/BucaLightingPrototypeBuilder.cs
+
+References checked
+https://learn.unity.com/course/get-started-with-shader-graph?version=6.3
+https://docs.unity3d.com/Packages/com.unity.shadergraph@17.5/manual/Shader-Graph-Sample-Custom-Lighting.html
+Installed Shader Graph source and Custom Lighting sample.
+The linked YouTube pages were attempted; full video contents were unavailable.
+
+Next decision
+Review the visual result before applying the approach to any production object.
+If accepted, test a representative gameplay scene on target WebGL hardware
+and measure frame time with capture-buffer preservation disabled.

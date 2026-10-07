@@ -68,7 +68,7 @@ namespace Luxodd.Game.Scripts.Network
             }
 
             Instance = this;
-            DontDestroyOnLoad(gameObject);
+            DontDestroyOnLoad(transform.root.gameObject);
 
 #if UNITY_WEBGL && !UNITY_EDITOR
 
@@ -81,7 +81,7 @@ namespace Luxodd.Game.Scripts.Network
         
         public void OnLuxoddSession(string json)
         {
-            Debug.Log($"[{DateTime.Now}][{GetType().Name}][{nameof(OnLuxoddSession)}] OK, session json = {json}");
+            Debug.Log($"[{DateTime.Now}][{GetType().Name}][{nameof(OnLuxoddSession)}] Session payload received");
 
             if (string.IsNullOrEmpty(json))
                 return;

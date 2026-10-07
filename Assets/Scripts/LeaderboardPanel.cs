@@ -13,6 +13,7 @@ public class LeaderboardPanel : MonoBehaviour
     public CanvasGroup group;
     public RectTransform card;
     public TMP_Text titleText;
+    public bool sculptedHeading;
     public TMP_Text myRankText;
     public TMP_Text continueHintText;
 
@@ -28,7 +29,43 @@ public class LeaderboardPanel : MonoBehaviour
     public Color normalRowColor = new Color(0.64f, 0.90f, 1f, 1f);
     public Color myRowColor = new Color(1f, 0.18f, 0.53f, 1f);
 
+    public bool arcadeResult;
+    public bool LevelsSelected { get; private set; }
+    bool choiceMade;
+    float choiceReadyAt;
+    public void ChooseRetry() { Choose(false); }
+    public void ChooseLevels() { Choose(true); }
+    void Choose(bool levels)
+    {
+        if (arcadeResult || !_isAnimating || choiceMade || Time.unscaledTime < choiceReadyAt) return;
+        LevelsSelected=levels; choiceMade=true; AudioManager.Instance?.PlayButtonClick();
+    }
     bool _isAnimating;
+    float _neutralSeconds;
+    public int PresentationId { get; private set; }
+    public int PlayerScore { get; private set; }
+    public float ShownAtUnscaled { get; private set; }
+    public void RefreshEntries(int presentationId, LeaderboardData[] entries, int rank, int score, string name)
+    {
+        if (_isAnimating && presentationId == PresentationId) Populate(entries, rank, score, name);
+    }
+    static float _releasedAt = float.NegativeInfinity;
+    public static bool InputSettledAfterDisplay =>
+        Time.realtimeSinceStartup - _releasedAt < 1f &&
+        !ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Black);
+
+    void Update()
+    {
+        if (_isAnimating && !arcadeResult && Time.unscaledTime >= choiceReadyAt)
+        {
+            if (ArcadeInputAdapter.GetButtonDown(ArcadeInputAdapter.Button.Green) || ArcadeInputAdapter.ConfirmDown()) ChooseRetry();
+            else if (ArcadeInputAdapter.CancelDown()) ChooseLevels();
+        }
+        if (_isAnimating)
+            _neutralSeconds = ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Black)
+                ? 0f : _neutralSeconds + Time.unscaledDeltaTime;
+    }
+
     Action _onFinished;
     string _outcomeMessage = "YOU LOST";
 
@@ -46,22 +83,15 @@ public class LeaderboardPanel : MonoBehaviour
     public void Show(LeaderboardData[] entries, int myRank, int myScore,
         string myName, string outcomeMessage, Action onFinished)
     {
-        if (_isAnimating)
-        {
-            if (string.Equals(_outcomeMessage, "TIME IS OVER", StringComparison.Ordinal))
-            {
-                Action chainedPrevious = _onFinished;
-                _onFinished = () => { chainedPrevious?.Invoke(); onFinished?.Invoke(); };
-                return;
-            }
+        // A duplicate failure must never complete the active presentation early
+        // or queue another paid transaction.
+        if (_isAnimating) return;
 
-            Action previous = _onFinished;
-            _onFinished = null;
-            StopAllCoroutines();
-            _isAnimating = false;
-            previous?.Invoke();
-        }
-
+        PresentationId++;
+        ShownAtUnscaled = Time.unscaledTime;
+        choiceMade=false; LevelsSelected=false; choiceReadyAt=Time.unscaledTime+3.4f;
+        PlayerScore = Mathf.Max(0, myScore);
+        _neutralSeconds = 0f;
         _isAnimating = true;
         _onFinished = onFinished;
         _outcomeMessage = NormalizeOutcome(outcomeMessage);
@@ -93,13 +123,14 @@ public class LeaderboardPanel : MonoBehaviour
     void Populate(LeaderboardData[] entries, int myRank, int myScore, string myName)
     {
         if (titleText != null)
-            titleText.text = $"{_outcomeMessage}  •  TOP 10 POINTS";
+            titleText.text = sculptedHeading ? _outcomeMessage : $"<size=120%>BUCA</size>\n<size=52%>CHAMPIONS</size>\n<size=30%>{_outcomeMessage}</size>";
 
         bool meInList = false;
         if (entries != null)
         {
-            foreach (LeaderboardData entry in entries)
+            for (int i = 0; i < Mathf.Min(entries.Length, rows != null ? rows.Length : 0); i++)
             {
+                LeaderboardData entry = entries[i];
                 if (!string.IsNullOrEmpty(entry.playerName) && !string.IsNullOrEmpty(myName) &&
                     entry.playerName.Equals(myName, StringComparison.OrdinalIgnoreCase))
                 {
@@ -133,7 +164,7 @@ public class LeaderboardPanel : MonoBehaviour
         int entryCount = entries != null ? entries.Length : 0;
         if (entryCount == 0 && rowCount > 0)
         {
-            rows[0]?.Populate(myRank > 0 ? myRank : 1,
+            rows[0]?.Populate(myRank,
                 string.IsNullOrEmpty(myName) ? "YOU" : myName,
                 myScore, myRowColor, true);
             return;
@@ -154,11 +185,13 @@ public class LeaderboardPanel : MonoBehaviour
 
     IEnumerator ShowRoutine()
     {
+        float shownAt = ShownAtUnscaled;
+        float phaseStarted = shownAt;
         float duration = Mathf.Max(0.01f, fadeInDuration);
         float elapsed = 0f;
         while (elapsed < duration)
         {
-            elapsed += Time.unscaledDeltaTime;
+            elapsed = Time.unscaledTime - phaseStarted;
             float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
             if (group != null) group.alpha = t;
             if (card != null) card.localScale = Vector3.one * Mathf.Lerp(0.94f, 1f, t);
@@ -173,24 +206,18 @@ public class LeaderboardPanel : MonoBehaviour
         }
         if (card != null) card.localScale = Vector3.one;
 
-        // Every terminal result follows the same deterministic platform flow:
-        // show this authored leaderboard, then invoke its completion callback
-        // exactly autoAdvanceSeconds later. LevelManager uses that callback to
-        // open Luxodd's official Continue transaction.
+        // Four seconds for the reason, four for standings, then one platform handoff.
+        // The same unscaled clock drives both the visual phase and this callback.
         const float fadeOutDuration = 0.25f;
-        float visibleDuration = Mathf.Max(0f, autoAdvanceSeconds);
-        float holdDuration = Mathf.Max(0f, visibleDuration - fadeOutDuration);
-        float countdown = holdDuration;
-        while (countdown > 0f)
-        {
-            countdown -= Time.unscaledDeltaTime;
-            yield return null;
-        }
+        float visibleDuration = arcadeResult ? 8f : Mathf.Max(0f, autoAdvanceSeconds);
+        float fadeOutAt = shownAt + Mathf.Max(duration, visibleDuration - fadeOutDuration);
+        while (Time.unscaledTime < fadeOutAt) yield return null;
 
+        phaseStarted = Time.unscaledTime;
         elapsed = 0f;
         while (elapsed < fadeOutDuration)
         {
-            elapsed += Time.unscaledDeltaTime;
+            elapsed = Time.unscaledTime - phaseStarted;
             float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / fadeOutDuration));
             if (group != null) group.alpha = 1f - t;
             yield return null;
@@ -205,6 +232,7 @@ public class LeaderboardPanel : MonoBehaviour
         }
         gameObject.SetActive(false);
 
+        if (_neutralSeconds >= 0.25f) _releasedAt = Time.realtimeSinceStartup;
         Action callback = _onFinished;
         _onFinished = null;
         _isAnimating = false;
@@ -215,8 +243,8 @@ public class LeaderboardPanel : MonoBehaviour
     {
         if (!string.IsNullOrWhiteSpace(outcome) &&
             outcome.IndexOf("TIME", StringComparison.OrdinalIgnoreCase) >= 0)
-            return "TIME IS OVER";
-        return "YOU LOST";
+            return "TIME'S UP!";
+        return "OUT OF HEARTS!";
     }
 
     [Serializable]

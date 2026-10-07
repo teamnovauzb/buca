@@ -221,6 +221,7 @@ namespace Luxodd.Game.Scripts.Network
             _socketLibraryWrapper.WebSocketConnectionErrorEvent.RemoveListener(OnWebSocketConnectionErrorHandler);
             _socketLibraryWrapper.WebSocketClosedEvent.RemoveListener(OnWebSocketClosedHandler);
             _socketLibraryWrapper.MessageReceivedEvent.RemoveListener(OnMessageReceived);
+            _socketLibraryWrapper.OnSessionOptionAction.RemoveListener(OnSessionOptionsCallback);
         }
 
         private string GetSessionToken()

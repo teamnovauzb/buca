@@ -47,12 +47,9 @@ public static class AddNewMechanics
         n += Process("Level_03", InjectL03);
         n += Process("Level_06", InjectL06);
         n += Process("Level_08", InjectL08);
-        n += Process("Level_10", InjectL10);
         n += Process("Level_17", InjectL17);
         n += Process("Level_18", InjectL18);
-        n += Process("Level_19", InjectL19);
         n += Process("Level_21", InjectL21);
-        n += Process("Level_25", InjectL25);
         n += Process("Level_26", InjectL26);
         n += Process("Level_29", InjectL29);
 
@@ -60,10 +57,9 @@ public static class AddNewMechanics
         AssetDatabase.Refresh();
 
         if (!BucaBatch.Silent) EditorUtility.DisplayDialog("New mechanics added ✓",
-            $"Injected the 4 new mechanics into {n} level prefabs:\n\n" +
+            $"Injected the 3 new mechanics into {n} level prefabs:\n\n" +
             "• Kicker Bumper  →  L17, L21, L26\n" +
             "• Banking Rail   →  L3, L6, L29\n" +
-            "• Ice Patch      →  L10, L19, L25\n" +
             "• Orbiting Hole  →  L8, L18\n\n" +
             "You can now DELETE this file (Assets/Editor/AddNewMechanics.cs).\n" +
             "KEEP the 4 component scripts in Assets/Scripts (the pieces need them).\n\n" +
@@ -76,12 +72,9 @@ public static class AddNewMechanics
     static void InjectL03(GameObject r) { BankRailV(r, 3.9f,  0.5f, 4.0f); }                 // bank up the right wall into the corner pocket
     static void InjectL06(GameObject r) { BankRailV(r, 4.0f,  0.0f, 5.0f); }                 // live right wall for the zig-zag banks
     static void InjectL08(GameObject r) { Orbit(r, 0.7f, 5.5f, 0f); }                        // drifting goal at the top of the snake
-    static void InjectL10(GameObject r) { Ice(r, -2.3f, 0.3f, 1.6f, 3.2f); }                 // slick the safe left lane (vs the boosted right)
     static void InjectL17(GameObject r) { Bumper(r, 0f, -0.8f); Bumper(r, 0f, 2.0f); }       // two pops down the bumper alley
     static void InjectL18(GameObject r) { Orbit(r, 0.8f, 5.0f, 1.5f); }                       // moving goal above the counter-spinners
-    static void InjectL19(GameObject r) { Ice(r, 0f, -1.0f, 2.0f, 3.0f); }                    // ice + the wind that follows = a long slide
     static void InjectL21(GameObject r) { Bumper(r, 0f, 0.3f); }                              // a central pop in the bounce-pad chain
-    static void InjectL25(GameObject r) { Ice(r, 0f, -0.8f, 1.3f, 2.2f); }                    // extends the boost into a glide
     static void InjectL26(GameObject r) { Bumper(r, 0f, 2.6f); }                              // pop bumper at the top of the pinball table
     static void InjectL29(GameObject r) { BankRailV(r, 4.0f, 0.5f, 4.0f); }                   // live right wall to bank across the gauntlet
 
@@ -153,20 +146,6 @@ public static class AddNewMechanics
     {
         var rb = go.AddComponent<Rigidbody>();
         rb.useGravity = false; rb.isKinematic = true; rb.interpolation = RigidbodyInterpolation.Interpolate;
-    }
-
-    static void Ice(GameObject root, float x, float z, float sx, float sz)
-    {
-        var ice = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        ice.name = Tag + "IcePatch";
-        ice.transform.SetParent(root.transform);
-        ice.transform.localPosition = new Vector3(x, 0.012f, z);      // flat inlay just above the floor
-        ice.transform.localScale = new Vector3(sx, 0.04f, sz);
-        if (_ice != null) ice.GetComponent<MeshRenderer>().sharedMaterial = _ice;
-        ice.GetComponent<Collider>().isTrigger = true;
-        var ip = ice.AddComponent<IcePatch>();
-        ip.patchDamping = 0.05f;
-        ip.restoreDamping = 0.9f;                                     // the puck's normal drag (from Game.unity)
     }
 
     static void Orbit(GameObject root, float radius, float cycle, float phase)

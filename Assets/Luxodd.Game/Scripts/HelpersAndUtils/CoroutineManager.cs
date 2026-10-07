@@ -13,8 +13,9 @@ namespace Luxodd.Game.Scripts.HelpersAndUtils
             {
                 if (_instanceInner == null)
                 {
-                    var go = new GameObject("CoroutineManager");
-                    _instanceInner = go.AddComponent<CoroutineManager>();
+                    _instanceInner = Object.FindAnyObjectByType<CoroutineManager>();
+                    if (_instanceInner == null)
+                        throw new System.InvalidOperationException("Place the saved CoroutineManager in the scene before starting Luxodd services.");
                 }
                 return _instanceInner;
             }

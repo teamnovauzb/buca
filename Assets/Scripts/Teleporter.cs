@@ -30,7 +30,7 @@ public class Teleporter : MonoBehaviour
         if (partner == null) return;
         var rb = other.attachedRigidbody;
         if (rb == null) return;
-        if (rb.GetComponent<PuckController>() == null) return;
+        if ((rb.GetComponent<PuckController>() == null && rb.GetComponent<TutorialPracticePuck>() == null)) return;
 
         Vector3 inVel = rb.linearVelocity;
         float speed = inVel.magnitude;
@@ -61,6 +61,7 @@ public class Teleporter : MonoBehaviour
         _disabledUntil = Time.time + cooldown;
         partner._disabledUntil = Time.time + cooldown;
 
+        if(rb.GetComponent<TutorialPracticePuck>()!=null) return;
         if (LevelManager.Instance != null)
         {
             LevelManager.Instance.PlayWallSpark(transform.position, Vector3.up);

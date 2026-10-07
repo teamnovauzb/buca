@@ -26,6 +26,8 @@ public class PuckController : MonoBehaviour
     SphereCollider _puckCollider;
     Camera _cam;
     bool _isDragging;
+    Vector3 _displayAimDirection;
+    public Vector3 DisplayAimDirection => _isDragging ? _displayAimDirection : Vector3.zero;
     Vector3 _dragStartWorld;
     Color _aimLineDefaultStart;
     Color _aimLineDefaultEnd;
@@ -264,7 +266,7 @@ public class PuckController : MonoBehaviour
         // Auto-detect: if any joystick/button input was ever seen, use
         // arcade mode. Otherwise use mouse. Once arcade is detected it
         // stays active for the rest of the session.
-        if (LuxoddGameBridge.IsArcadeInputActive)
+        if (ToyBoxGameplayHud.PanelInputActive || LuxoddGameBridge.IsArcadeInputActive)
             UpdateArcadeInput();
         else
             UpdateMouseInput();
@@ -291,20 +293,10 @@ public class PuckController : MonoBehaviour
     }
 
     // ─── Arcade joystick input ──────────────────────────────
-    // Digital-cabinet model (no pressure-sensitive stick required):
-    //   Joystick LEFT / RIGHT → ROTATES AIM continuously through 0..360 degrees
-    //   Joystick UP / DOWN → quadrant-aware rotation:
-    //       right half: UP turns left,  DOWN turns right
-    //       left half:  UP turns right, DOWN turns left
-    //     A vertical hold keeps its chosen turn direction across the quadrant
-    //     boundary; the mapping is re-evaluated after the stick is released.
-    //   HOLD Black button → POWER builds up over `chargeTimeToMax` seconds
-    //   RELEASE Black → fire with whatever power was reached
-    //   HOLD Green button → rotate aim slowly for fine adjustments
-    //   White button → cancel current charge
-    //
-    // Aim can be rotated with the joystick at any time,
-    // including while Black is being held — power keeps building, aim stays live.
+    // Joystick direction points the aim directly in screen space.
+    // Analog/pointer displacement selects power; returning to center retains it.
+    // Black can charge further, then fires on release. Red cancels.
+    // Digital sticks provide direction only and report full displacement.
     [Header("Arcade input")]
     [SerializeField]
     [Tooltip("Gameplay-facing Luxodd adapter. Run RealBuca/Setup Luxodd Arcade Joystick to create and assign it.")]
@@ -317,7 +309,7 @@ public class PuckController : MonoBehaviour
     [Range(10f, 90f)] public float fineAimRotationSpeed = 30f;
     [Tooltip("Trajectory refresh cap for WebGL. Aim remains smooth while expensive physics prediction runs at this rate.")]
     [Range(10f, 60f)] public float arcadePreviewRefreshRate = 30f;
-    [Tooltip("Seconds for Red-hold to fill the power meter from 0 to 100%. " +
+    [Tooltip("Seconds for Black-hold to fill the power meter from 0 to 100%. " +
              "QA req: raised to 2.0s so players have finer control over shot strength.")]
     public float chargeTimeToMax = 2.0f;
     [Tooltip("Minimum length (as a fraction of full power) the aim guide is drawn at " +
@@ -378,6 +370,7 @@ public class PuckController : MonoBehaviour
         public Transform body;
         public MovingWall movingWall;
         public RotatingWall rotatingWall;
+        public OrbitingGoalFlag goalFlag;
         public Vector3 bodyLocalOffset;
         public Quaternion bodyLocalRotation;
         public float broadphaseRadius;
@@ -396,9 +389,7 @@ public class PuckController : MonoBehaviour
     {
         Vector2 stick = ReadArcadeAim();
         float mag = stick.magnitude;
-        // Luxodd's cabinet joystick is digital, so it supplies direction only.
-        // Shot strength is deliberately time-based on the Black gameplay
-        // button; the reserved Orange help button is untouched.
+        // Read Luxodd axes or the on-screen stick; Black charges/releases.
         bool fireHeld = ReadArcadeFireHeld();
         bool fineAimHeld = ReadArcadeFineAimHeld();
 
@@ -411,90 +402,41 @@ public class PuckController : MonoBehaviour
             fireHeld = false;
         }
 
-        // 1) Update aim from joystick whenever it's tilted past deadzone.
-        //    Aim persists when stick returns to center — player can pre-aim,
-        //    let go, then start charging.
+        // Direct aiming: up/right/diagonals point the shot in the same screen
+        // direction. Stick displacement selects the actual launch strength.
         if (mag > arcadeDeadzone)
         {
-            if (!_arcadeAimInitialized)
-            {
-                // Preserve the previous first-touch behavior (+Z for every
-                // direction except DOWN, which starts at -Z) while storing the
-                // angle in the conventional 0° RIGHT / 180° LEFT convention.
-                _arcadeAimAngleDegrees = stick.y < -arcadeDeadzone ? 270f : 90f;
-                _arcadeAimInitialized = true;
-            }
-
-            float absX = Mathf.Abs(stick.x);
-            float absY = Mathf.Abs(stick.y);
-            bool verticalHeld = absY > arcadeDeadzone;
-
-            // Once a vertical command starts, keep its turn direction latched
-            // until Y returns to neutral. This is what lets a held UP/DOWN pass
-            // cleanly from one half of the circle into the other instead of
-            // reversing or jittering on the boundary.
-            bool useVertical = verticalHeld && (_verticalAimWasHeld || absY > absX);
-            float turnInput = 0f;
-            if (useVertical)
-            {
-                if (!_verticalAimWasHeld)
-                    _latchedVerticalTurn = GetVerticalTurnForQuadrant(
-                        _arcadeAimAngleDegrees, stick.y);
-
-                _verticalAimWasHeld = true;
-                turnInput = _latchedVerticalTurn;
-            }
-            else
-            {
-                _verticalAimWasHeld = false;
-                _latchedVerticalTurn = 0f;
-
-                // The old LEFT/RIGHT behavior is preserved exactly. The minus
-                // sign only compensates for changing the stored angle from the
-                // old 0°=+Z convention to conventional 0°=RIGHT.
-                if (absX > arcadeDeadzone)
-                    turnInput = -Mathf.Sign(stick.x);
-            }
-
-            if (turnInput != 0f)
-            {
-                // Clamp a single-frame hitch so returning from a browser stall
-                // cannot make the aim jump by a large, unpredictable angle.
-                float safeDeltaTime = Mathf.Min(Time.unscaledDeltaTime, 0.05f);
-                float normalRotationSpeed = arcadeAimRotationSpeed >= 30f
-                    ? arcadeAimRotationSpeed : 100f;
-                float preciseRotationSpeed = Mathf.Clamp(
-                    fineAimRotationSpeed, 10f, normalRotationSpeed);
-                float rotationSpeed = fineAimHeld
-                    ? preciseRotationSpeed : normalRotationSpeed;
-                _arcadeAimAngleDegrees = Mathf.Repeat(
-                    _arcadeAimAngleDegrees
-                    + turnInput * rotationSpeed * safeDeltaTime,
-                    360f);
-            }
-
-            float radians = _arcadeAimAngleDegrees * Mathf.Deg2Rad;
-            _arcadeAimDir = new Vector3(Mathf.Cos(radians), 0f, Mathf.Sin(radians));
+            Vector3 forward=_cam!=null?Vector3.ProjectOnPlane(_cam.transform.forward,Vector3.up).normalized:Vector3.forward;
+            Vector3 right=_cam!=null?Vector3.ProjectOnPlane(_cam.transform.right,Vector3.up).normalized:Vector3.right;
+            _arcadeAimDir=(right*stick.x+forward*stick.y).normalized;
+            _arcadeAimAngleDegrees=Mathf.Atan2(_arcadeAimDir.z,_arcadeAimDir.x)*Mathf.Rad2Deg;
+            _arcadeAimInitialized=true;
+            // Keep the last selected strength when the stick returns to center.
+            // Holding Shoot can still increase it; release uses the shown power.
+            if(!fireHeld && !_arcadeFireWasHeld)
+                _arcadePower=Mathf.Lerp(minChargeToFire,1f,Mathf.InverseLerp(arcadeDeadzone,1f,Mathf.Min(1f,mag)));
             if (!_isDragging)
             {
-                _isDragging = true;
-                if (aimLine != null) aimLine.enabled = true;
+                _isDragging=true;
+                if(aimLine!=null) aimLine.enabled=true;
             }
         }
-        else
-        {
-            // Releasing the stick commits the new quadrant. The next UP/DOWN
-            // press calculates its direction from that new side.
-            ResetVerticalAimLatch();
-        }
+        ResetVerticalAimLatch();
 
         // 2) While Black is held AND we have an aim direction → charge power.
+        // A first press is useful even before a child has touched the stick.
+        if(fireHeld && _arcadeAimDir.sqrMagnitude <= .001f)
+        {
+            _arcadeAimDir=Vector3.forward;
+            _arcadeAimInitialized=true;
+            _arcadeAimAngleDegrees=90f;
+        }
         bool hasAim = _arcadeAimDir.sqrMagnitude > 0.001f;
         SetFineAimVisual(fineAimHeld && hasAim);
         float prevPower = _arcadePower;
         if (fireHeld && hasAim)
         {
-            _arcadePower = Mathf.Clamp01(_arcadePower + Time.deltaTime / Mathf.Max(0.1f, chargeTimeToMax));
+            _arcadePower = Mathf.Clamp01(Mathf.Max(minChargeToFire, _arcadePower + Time.deltaTime / Mathf.Max(0.1f, chargeTimeToMax)));
             if (!_isDragging)
             {
                 _isDragging = true;
@@ -508,7 +450,7 @@ public class PuckController : MonoBehaviour
                 Debug.Log($"[PuckController] Charge {Mathf.RoundToInt(_arcadePower * 100)}% " +
                           $"(elapsed ≈ {(_arcadePower * chargeTimeToMax):F2}s of {chargeTimeToMax:F2}s)");
             else if (curTier > prevTier)
-                Debug.Log($"[PuckController] Charge 100% (full power after {chargeTimeToMax:F2}s of holding Red)");
+                Debug.Log($"[PuckController] Charge 100% (full power after {chargeTimeToMax:F2}s of holding Black)");
         }
 
         // 3) Black RELEASE (with charge) → FIRE in aim direction at current power.
@@ -550,7 +492,7 @@ public class PuckController : MonoBehaviour
         }
         _arcadeFireWasHeld = fireHeld;
 
-        // 4) White button → cancel an in-progress charge, keep puck at rest.
+        // 4) Red button → cancel an in-progress charge, keep puck at rest.
         if (_isDragging && ReadArcadeCancelDown())
         {
             EndDrag();
@@ -560,26 +502,27 @@ public class PuckController : MonoBehaviour
             return;
         }
 
-        // 5) Visuals.
-        //    QA req #2: the throw-direction guide must be visible BEFORE the
-        //    fire button is pressed. Previously the aim line + trajectory used
-        //    `_arcadePower` for their length, which is 0 until the player holds
-        //    Red — so the guide was invisible while just aiming. Now the aim
-        //    line + trajectory preview use a MINIMUM visual length
-        //    (aimGuideMinFraction) so the direction shows the moment the stick
-        //    is tilted. The POWER ARC still uses the real charge (empty → full)
-        //    so the player still sees the strength building separately.
+        // Predict the selected stick power before Shoot, then the charged power
+        // while held. The launch and the preview share the same strength.
         if (_isDragging && hasAim)
         {
             // Aim line + trajectory: always visible at >= aimGuideMinFraction,
             // growing toward full length as charge builds.
             float guideFraction = Mathf.Max(_arcadePower, aimGuideMinFraction);
+            _displayAimDirection = _arcadeAimDir;
             Vector3 aimVec = _arcadeAimDir * guideFraction * maxDragDistance;
             Vector3 origin = GetTrajectoryOrigin();
             Vector3 target = origin + aimVec; // points TOWARD the shot direction
             if (aimLine != null)
             {
                 aimLine.enabled = true;
+                // Keep a visible direction guide while charge is zero. The
+                // predicted path uses real power and may not exist yet.
+                if(aimLine.widthMultiplier!=.065f)
+                {
+                    aimLine.widthCurve = AnimationCurve.Constant(0,1,1);
+                    aimLine.widthMultiplier = .065f;
+                }
                 aimLine.SetPosition(0, origin);
                 aimLine.SetPosition(1, target);
             }
@@ -607,8 +550,10 @@ public class PuckController : MonoBehaviour
                 UpdatePreview(-realShotVec);
             }
 
-            // Power arc: reflects ACTUAL charge — empty before holding Red,
-            // fills as power builds. Uses _arcadePower (not the guide minimum).
+            if(aimLine!=null && previewLine!=null && previewLine.enabled && previewLine.positionCount>1)
+                aimLine.enabled=false;
+
+            // Power arc reflects the selected/charged shot strength.
             Vector3 powerVec = _arcadeAimDir * _arcadePower * maxDragDistance;
             UpdatePowerArc(-powerVec);
         }
@@ -643,13 +588,18 @@ public class PuckController : MonoBehaviour
 
     Vector2 ReadArcadeAim()
     {
-        return _arcadeInput != null && _arcadeInput.isActiveAndEnabled
+        Vector2 stick = ToyBoxGameplayHud.PanelStick.sqrMagnitude > .001f ? ToyBoxGameplayHud.PanelStick
+            : _arcadeInput != null && _arcadeInput.isActiveAndEnabled
             ? _arcadeInput.AimVector
             : ArcadeInputAdapter.GetStick();
+        return ToyBoxGameplayHud.MapGameplayStick(stick);
     }
+
+    public bool ShootControlHeld => ReadArcadeFireHeld();
 
     bool ReadArcadeFireHeld()
     {
+        if(ToyBoxGameplayHud.PanelShoot) return true;
         return _arcadeInput != null && _arcadeInput.isActiveAndEnabled
             ? _arcadeInput.IsShootButtonPressed
             : ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Black);
@@ -657,9 +607,7 @@ public class PuckController : MonoBehaviour
 
     bool ReadArcadeFineAimHeld()
     {
-        return _arcadeInput != null && _arcadeInput.isActiveAndEnabled
-            ? _arcadeInput.IsFineTuneButtonPressed
-            : ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Green);
+        return false; // Green is now Undo, not fine aim.
     }
 
     bool ReadArcadeCancelDown()
@@ -683,6 +631,7 @@ public class PuckController : MonoBehaviour
     {
         Vector3 drag = GetDragVector();
         Vector3 origin = GetTrajectoryOrigin();
+        _displayAimDirection = drag.sqrMagnitude > .0001f ? -drag.normalized : Vector3.zero;
         Vector3 target = origin - drag;   // slingshot: aim line points OPPOSITE the drag
         if (aimLine != null)
         {
@@ -739,6 +688,20 @@ public class PuckController : MonoBehaviour
     /// Rigidbody is Y-locked; reflecting a bevel's 3D normal was the source of
     /// intermittent sideways/reversed preview segments at corners.
     /// </summary>
+    readonly System.Collections.Generic.List<Vector3> _tutorialFrames = new();
+    bool _recordTutorial;
+    /// <summary>Read-only samples at physics cadence from the normal aiming predictor.</summary>
+    public Vector3[] GetTutorialPath(Vector3 direction, float power)
+    {
+        _tutorialFrames.Clear();_recordTutorial=true;
+        try
+        {
+            UpdatePreview(-direction.normalized * maxDragDistance * Mathf.Clamp01(power));
+            return _tutorialFrames.ToArray();
+        }
+        finally{_recordTutorial=false;HideTrajectoryPreview();}
+    }
+
     void UpdatePreview(Vector3 drag)
     {
         if (previewLine == null)
@@ -777,6 +740,7 @@ public class PuckController : MonoBehaviour
         float castRadius = GetPreviewCastRadius();
         Collider previousCollider = null;
         points.Add(origin);
+        if(_recordTutorial)_tutorialFrames.Add(origin);
 
         // Simulate the same launch velocity, damping, continuous forces and
         // one-shot mechanics as gameplay. Small swept-sphere steps preserve the
@@ -793,7 +757,7 @@ public class PuckController : MonoBehaviour
         int bounceCount = 0;
         int firstBouncePointIndex = -1;
         int maxSteps = Mathf.Clamp(previewMaxSteps, 40, 300);
-        float previewStartTime = Time.time;
+        float previewStartTime = BoardMechanicClock.Time;
         float simulatedTime = 0f;
         bool terminateTrajectory = false;
 
@@ -895,22 +859,25 @@ public class PuckController : MonoBehaviour
 
             if (points.Count == 0 || Vector3.SqrMagnitude(points[points.Count - 1] - origin) > 0.0025f)
                 points.Add(origin);
+            if(_recordTutorial)_tutorialFrames.Add(origin);
             simulatedTime += dt;
             if (terminateTrajectory || bounceCount > previewBounces) break;
         }
 
-        // Keep one clean centre-line through authored rebound predictions. The
-        // old widening post-bounce coverage strip could expand into a large
-        // opaque wedge and hide the board.
-        int exactPointCount = points.Count;
+        // Show a centre-line up to the first rebound, then a narrow translucent
+        // estimate. This is a visual tolerance cue, not a guaranteed landing area.
+        int exactPointCount = firstBouncePointIndex>=0 ? firstBouncePointIndex+1 : points.Count;
         previewLine.positionCount = exactPointCount;
         for (int i = 0; i < exactPointCount; i++)
             previewLine.SetPosition(i, points[i]);
 
         if (previewCoverageLine != null)
         {
-            previewCoverageLine.enabled = false;
-            previewCoverageLine.positionCount = 0;
+            bool show=firstBouncePointIndex>=0 && points.Count>firstBouncePointIndex+1;
+            previewCoverageLine.enabled=show;
+            previewCoverageLine.positionCount=show?points.Count-firstBouncePointIndex:0;
+            if(show) for(int i=firstBouncePointIndex;i<points.Count;i++)
+                previewCoverageLine.SetPosition(i-firstBouncePointIndex,points[i]+Vector3.up*.006f);
         }
     }
 
@@ -969,10 +936,12 @@ public class PuckController : MonoBehaviour
         RotatingWall[] rotatingWalls = root.GetComponentsInChildren<RotatingWall>(true);
         for (int i = 0; i < rotatingWalls.Length; i++)
             AddPreviewDynamicColliders(rotatingWalls[i], null, rotatingWalls[i]);
+        foreach (var flag in root.GetComponentsInChildren<OrbitingGoalFlag>(true))
+            AddPreviewDynamicColliders(flag, null, null, flag);
     }
 
     void AddPreviewDynamicColliders(Component motionBody, MovingWall movingWall,
-                                    RotatingWall rotatingWall)
+                                    RotatingWall rotatingWall, OrbitingGoalFlag goalFlag = null)
     {
         if (motionBody == null) return;
         Transform body = motionBody.transform;
@@ -988,6 +957,7 @@ public class PuckController : MonoBehaviour
                 body = body,
                 movingWall = movingWall,
                 rotatingWall = rotatingWall,
+                goalFlag = goalFlag,
                 // Store the already-scaled rigid offset. Dynamic walls do not
                 // resize at runtime, so predicted pose reconstruction stays exact.
                 bodyLocalOffset = inverseBodyRotation * (collider.transform.position - body.position),
@@ -1024,6 +994,11 @@ public class PuckController : MonoBehaviour
             if (wind == null || !wind.isActiveAndEnabled) continue;
             Collider trigger = wind.GetComponent<Collider>();
             if (!PreviewOverlaps(trigger, position, radius)) continue;
+            if (wind.conveyor)
+            {
+                velocity = wind.ConveyorExitBlocked(position,radius) ? Vector3.zero : wind.ConveyorVelocity(velocity);
+                continue;
+            }
             Vector3 force = wind.transform.forward * wind.forceMagnitude;
             if (wind.addLift) force += Vector3.up * (wind.forceMagnitude * 0.15f);
             force.y = 0f; // the real puck is locked to the gameplay plane
@@ -1053,15 +1028,20 @@ public class PuckController : MonoBehaviour
             }
         }
 
-        float damping = _rb != null ? Mathf.Max(0f, _rb.linearDamping) : 0.9f;
+        // Use the surface baseline, not the current body's ice/honey damping,
+        // so a predicted path leaving a patch returns to normal drag.
+        float damping = _previewIcePatches.Length > 0
+            ? Mathf.Max(0f, _previewIcePatches[0].restoreDamping)
+            : (_rb != null ? Mathf.Max(0f, _rb.linearDamping) : 0.9f);
+        bool onPatch = false;
         for (int i = 0; i < _previewIcePatches.Length; i++)
         {
             IcePatch patch = _previewIcePatches[i];
             if (patch == null || !patch.isActiveAndEnabled) continue;
             if (PreviewOverlaps(patch.GetComponent<Collider>(), position, radius))
             {
-                damping = Mathf.Max(0f, patch.patchDamping);
-                break;
+                damping = onPatch ? Mathf.Max(damping, patch.patchDamping) : Mathf.Max(0f, patch.patchDamping);
+                onPatch = true;
             }
         }
         // PhysX applies linear damping once per fixed step using this decay.
@@ -1194,6 +1174,8 @@ public class PuckController : MonoBehaviour
                 && !dynamicCollider.movingWall.isActiveAndEnabled) continue;
             if (dynamicCollider.rotatingWall != null
                 && !dynamicCollider.rotatingWall.isActiveAndEnabled) continue;
+            if (dynamicCollider.goalFlag != null
+                && !dynamicCollider.goalFlag.isActiveAndEnabled) continue;
 
             HoleTrigger hole = collider.GetComponentInParent<HoleTrigger>();
             DeadlyTrigger deadly = collider.GetComponentInParent<DeadlyTrigger>();
@@ -1334,6 +1316,8 @@ public class PuckController : MonoBehaviour
     static Vector3 GetPredictedDynamicBodyPosition(
         PreviewDynamicCollider dynamicCollider, float absoluteTime)
     {
+        if (dynamicCollider.goalFlag != null)
+            return dynamicCollider.goalFlag.GetPredictedPosition(absoluteTime);
         return dynamicCollider.movingWall != null
             ? dynamicCollider.movingWall.GetPredictedPosition(absoluteTime)
             : dynamicCollider.body.position;
@@ -1360,6 +1344,8 @@ public class PuckController : MonoBehaviour
         Quaternion bodyRotation = dynamicCollider.body.rotation;
         if (dynamicCollider.movingWall != null)
             bodyPosition = dynamicCollider.movingWall.GetPredictedPosition(absoluteTime);
+        if (dynamicCollider.goalFlag != null)
+            bodyPosition = dynamicCollider.goalFlag.GetPredictedPosition(absoluteTime);
         if (dynamicCollider.rotatingWall != null)
             bodyRotation = dynamicCollider.rotatingWall.GetPredictedRotation(absoluteTime);
 
@@ -1403,6 +1389,8 @@ public class PuckController : MonoBehaviour
             velocity += dynamicCollider.movingWall.GetPredictedVelocity(absoluteTime);
         if (dynamicCollider.rotatingWall != null)
             velocity += dynamicCollider.rotatingWall.GetPredictedPointVelocity(worldPoint);
+        if (dynamicCollider.goalFlag != null)
+            velocity += dynamicCollider.goalFlag.GetPredictedVelocity(absoluteTime);
         velocity.y = 0f;
         return velocity;
     }
@@ -1543,6 +1531,10 @@ public class PuckController : MonoBehaviour
         Vector3 outgoing = CalculatePlanarBounceVelocity(
             incomingVelocity, planarNormal, surfaceVelocity,
             restitution, dynamicFriction);
+
+        var flag = hitCollider != null ? hitCollider.GetComponentInParent<OrbitingGoalFlag>() : null;
+        if (flag != null)
+            return flag.ReturnVelocity(incomingVelocity - surfaceVelocity, planarNormal);
 
         // These solid mechanics deliberately replace/adjust the normal engine
         // rebound. Mirror their final direction and speed in the preview only.
@@ -1697,15 +1689,15 @@ public class PuckController : MonoBehaviour
 
     Vector3 CalculateLaunchVelocity(Vector3 drag)
     {
-        // ForceMode.Impulse changes velocity by impulse / mass. Keeping this
-        // calculation in one place guarantees preview and gameplay use the
-        // same mass-aware launch speed and the same safety cap.
+        // Calibrate the full-power speed first, then scale by input strength.
+        // Capping AFTER impulse/mass made light pucks reach maximum speed
+        // with a small joystick displacement, flattening most of the power range.
         float mass = _rb != null ? Mathf.Max(0.0001f, _rb.mass) : 1f;
-        Vector3 velocity = (-drag * forceMultiplier) / mass;
-        velocity.y = 0f;
-        if (velocity.magnitude > maxLaunchSpeed)
-            velocity = velocity.normalized * maxLaunchSpeed;
-        return velocity;
+        drag.y = 0f;
+        float fullDrag = Mathf.Max(0.0001f, maxDragDistance);
+        float strength = Mathf.Clamp01(drag.magnitude / fullDrag);
+        float fullSpeed = Mathf.Min(maxLaunchSpeed, fullDrag * forceMultiplier / mass);
+        return -drag.normalized * (fullSpeed * strength);
     }
 
     Vector3 GetCommittedLaunchVelocity(Vector3 currentDrag)
@@ -1728,6 +1720,7 @@ public class PuckController : MonoBehaviour
     void ApplyLaunchVelocity(Vector3 launchVelocity)
     {
         if (_rb == null) return;
+        if(LevelManager.Instance!=null) LevelManager.Instance.CaptureUndoShot();
         _rb.linearVelocity = Vector3.zero;
         _rb.angularVelocity = Vector3.zero;
         _rb.linearVelocity = launchVelocity;
@@ -1763,6 +1756,7 @@ public class PuckController : MonoBehaviour
     void EndDrag()
     {
         _isDragging = false;
+        _displayAimDirection = Vector3.zero;
         SetFineAimVisual(false);
         if (aimLine != null) aimLine.enabled = false;
         HideTrajectoryPreview();

@@ -16,18 +16,24 @@ namespace Luxodd.Game
 
         private void Awake()
         {
-            EnsureCorrectModule();
+            // Modules must be authored in the prefab/scene, never added during play.
+#if ENABLE_INPUT_SYSTEM
+            if(GetComponent<InputSystemUIInputModule>()==null)Debug.LogError("Missing prebuilt InputSystemUIInputModule",this);
+#else
+            if(GetComponent<StandaloneInputModule>()==null)Debug.LogError("Missing prebuilt StandaloneInputModule",this);
+#endif
         }
 
 #if UNITY_EDITOR
         private void OnValidate()
         {
-            if (!autoFixInEditor) return;
+            if (!autoFixInEditor || Application.isPlaying) return;
             
             EnsureCorrectModule();
         }
 #endif
 
+        #if UNITY_EDITOR
         private void EnsureCorrectModule()
         {
 #if ENABLE_INPUT_SYSTEM
@@ -63,5 +69,6 @@ namespace Luxodd.Game
             Object.Destroy(c);
 #endif
         }
+        #endif
     }
 }

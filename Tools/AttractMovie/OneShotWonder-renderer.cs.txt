@@ -1,0 +1,121 @@
+using System;
+using System.IO;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+
+// Offline cinematic capture. Does not alter a gameplay scene, input, or player progress.
+public static partial class BuildToyBoxMainMenu
+{
+    static Scene movieScene, previousScene;
+    static Light[] oldLights;
+    static bool[] oldLightEnabled;
+    static Camera movieCamera;
+    static Transform moviePuck, movieStick, movieFire;
+    static Vector3 fireRest;
+    static GameObject movieGuide;
+    static Transform[] movieEyes,movieStars;
+    static GameObject movieTitle,movieInvite;
+    static RenderTexture movieTarget;
+    static Texture2D movieImage;
+    static int movieFrame;
+    const int MovieFrames=360;
+    const string MovieFolder="output/attract-v2/frames";
+    public static void StartAttractMovie(bool preview=false, int firstFrame=0)
+    {
+        if(movieCamera!=null) throw new Exception("Capture is already active");
+        ToyBoxGeometry.Initialize();
+        previousScene=SceneManager.GetActiveScene();
+        oldLights=UnityEngine.Object.FindObjectsByType<Light>(FindObjectsInactive.Exclude,FindObjectsSortMode.None);
+        oldLightEnabled=Array.ConvertAll(oldLights,l=>l.enabled); foreach(var l in oldLights)l.enabled=false;
+        movieScene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Additive);
+        SceneManager.SetActiveScene(movieScene);
+        RenderSettings.ambientMode=AmbientMode.Flat;RenderSettings.ambientLight=new Color(.24f,.26f,.30f);RenderSettings.ambientIntensity=1;
+        var stage=Group("BUCA Story Capture",null);
+        var level=(GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/ToyBoxMenu/Levels/Level_01.prefab"),movieScene);
+        level.transform.SetParent(stage,false);
+        foreach(var b in level.GetComponentsInChildren<MonoBehaviour>(true)) b.enabled=false;
+        var tutorial=AssetDatabase.LoadAssetAtPath<GameObject>("Assets/ToyBoxMenu/Prefabs/WatchThenTryTutorial.prefab").GetComponent<WatchCopyTutorial3D>();
+        var stickRoot=UnityEngine.Object.Instantiate(tutorial.joystick.parent,stage);
+        stickRoot.localPosition=new Vector3(-1.2f,.72f,-7.45f);stickRoot.localRotation=Quaternion.identity;
+        movieStick=stickRoot.Find("Joystick");
+        var fireRoot=UnityEngine.Object.Instantiate(tutorial.fireCap.parent,stage);
+        fireRoot.localPosition=new Vector3(1.2f,.72f,-7.45f);fireRoot.localRotation=Quaternion.identity;
+        foreach(var tr in fireRoot.GetComponentsInChildren<Transform>(true))if(tr.name.Contains("Text")||tr.GetComponent<Collider>()!=null) {var hit=tr.GetComponent<Collider>();if(hit!=null)hit.enabled=false;}
+        movieFire=fireRoot.Find(tutorial.fireCap.name);fireRest=movieFire.localPosition;
+        var cream=AssetDatabase.LoadAssetAtPath<Material>(Root+"/Materials/CoachCream.mat");
+        var teal=AssetDatabase.LoadAssetAtPath<Material>(Root+"/Materials/CoachTeal.mat");
+        var gold=new Material(cream); gold.color=new Color(1,.67f,.12f);gold.SetFloat("_Smoothness",.42f);
+        var ink=AssetDatabase.LoadAssetAtPath<Material>(Root+"/Materials/CoachInk.mat");
+        Box("StoryPlinth",stage,new Vector3(0,-.8f,0),new Vector3(10,.8f,15.4f),teal,.25f);
+        var room=(GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(Root+"/Prefabs/ToyRoomScenery.prefab"),movieScene);
+        room.transform.SetParent(stage,false);room.transform.localPosition=new Vector3(0,-1.3f,0);
+        foreach(var b in room.GetComponentsInChildren<MonoBehaviour>(true))b.enabled=false;
+        foreach(var tr in room.GetComponentsInChildren<Transform>(true))if(tr.name=="StandingTeddy")tr.gameObject.SetActive(false);
+        moviePuck=Group("HeroGoldPuck",stage,new Vector3(0,.22f,-5.5f));
+        Disc("Puck",moviePuck,Vector3.zero,.30f,.25f,gold,.045f);
+        Ring("NavyInset",moviePuck,new Vector3(0,.13f,0),.238f,.025f,ink,.014f);
+        movieStars=new Transform[28];
+        for(int i=0;i<28;i++)movieStars[i]=MeshObject("CelebrationStar",stage,Vector3.zero,ToyBoxGeometry.MapPrism(10,1,.22f,.04f,true),i%3==0?teal:gold).transform;
+        movieGuide=Group("ClearAim",stage).gameObject;
+        var guideMaterial=new Material(Shader.Find("Universal Render Pipeline/Unlit"));guideMaterial.color=new Color(.02f,.42f,.78f);
+        for(int i=0;i<18;i++)Disc("AimDot",movieGuide.transform,new Vector3(0,.08f,-4.9f+i*.55f),.035f,.015f,guideMaterial,.005f);
+        var fireMat=new Material(cream);fireMat.color=new Color(.95f,.65f,.16f);fireMat.SetFloat("_Smoothness",.55f);
+        foreach(var mr in movieFire.GetComponentsInChildren<MeshRenderer>())mr.sharedMaterial=fireMat;
+        var go=new GameObject("StoryCamera");movieCamera=go.AddComponent<Camera>();
+        movieCamera.clearFlags=CameraClearFlags.SolidColor;movieCamera.backgroundColor=new Color(.77f,.69f,.52f);
+        movieCamera.fieldOfView=41;movieCamera.nearClipPlane=.1f;movieCamera.farClipPlane=100;movieCamera.cullingMask=1<<29;
+        var data=go.AddComponent<UniversalAdditionalCameraData>();data.renderPostProcessing=false;
+        var light=new GameObject("StorySoftbox").AddComponent<Light>();light.type=LightType.Directional;light.intensity=.95f;light.color=new Color(1,.93f,.80f);light.transform.rotation=Quaternion.Euler(48,-35,0);light.shadows=LightShadows.Soft;light.cullingMask=1<<29;
+        var fill=new GameObject("StoryFill").AddComponent<Light>();fill.type=LightType.Directional;fill.intensity=.45f;fill.transform.rotation=Quaternion.Euler(35,140,0);fill.cullingMask=1<<29;
+        foreach(var root in movieScene.GetRootGameObjects())foreach(var t in root.GetComponentsInChildren<Transform>(true))t.gameObject.layer=29;
+        movieTarget=new RenderTexture(preview?960:1920,preview?540:1080,24);movieTarget.antiAliasing=4;movieTarget.Create();
+        movieImage=new Texture2D(movieTarget.width,movieTarget.height,TextureFormat.RGB24,false);
+        Directory.CreateDirectory(MovieFolder);
+        if(preview){try{foreach(float t in new[]{.5f,1.8f,2.8f,4f,6.5f,7.5f,10f}){SampleAttract(t);CaptureAttract("output/attract-v2/preview-"+t+".jpg");}}finally{EndAttract();}return;}
+        movieFrame=firstFrame;EditorApplication.update+=CaptureAttractTick;
+        AssemblyReloadEvents.beforeAssemblyReload+=EndAttract;
+        EditorApplication.playModeStateChanged+=MoviePlayModeChanged;
+    }
+    static float Smooth(float v)=>Mathf.SmoothStep(0,1,Mathf.Clamp01(v));
+    static void SampleAttract(float t)
+    {
+        movieStick.localRotation=Quaternion.Euler(-18*Smooth((t-1.25f)/.45f),0,0);
+        float press=Smooth((t-2.2f)/.14f)*(1-Smooth((t-3.05f)/.10f));
+        movieFire.localPosition=fireRest-Vector3.up*(.10f*press);
+        movieGuide.SetActive(t>=1.5f&&t<3.2f);
+        float shot=Mathf.Clamp01((t-3.2f)/3.0f);
+        moviePuck.localPosition=new Vector3(0,.22f,-5.5f+10.9f*shot);
+        float sink=Smooth((t-6.2f)/.3f);moviePuck.localPosition-=Vector3.up*(sink*.5f);
+        moviePuck.localScale=Vector3.one*(1-sink);
+        moviePuck.localRotation=Quaternion.Euler(0,t*120,0);
+        for(int i=0;i<movieStars.Length;i++){
+            float s=t-6.5f-i*.009f;movieStars[i].gameObject.SetActive(s>=0&&s<2.2f);
+            float a=i*2.39996f;
+            movieStars[i].localPosition=new Vector3(Mathf.Cos(a)*s*2.1f,.4f+4*s-1.6f*s*s,5.4f+Mathf.Sin(a)*s*1.4f);
+            movieStars[i].localScale=Vector3.one*(.14f+(i%3)*.04f);
+            movieStars[i].localRotation=Quaternion.Euler(70+s*150,a*57,s*180);
+        }
+        Vector3 position,target;
+        if(t<1.2f){position=Vector3.Lerp(new Vector3(1.1f,1.2f,-7.3f),new Vector3(.7f,1.05f,-7.1f),Smooth(t/1.2f));target=new Vector3(0,.18f,-5.5f);}
+        else if(t<2.2f){position=new Vector3(-2.9f,2.5f,-10.3f);target=new Vector3(-.85f,1f,-7.3f);}
+        else if(t<3.2f){position=Vector3.Lerp(new Vector3(2.7f,2.5f,-9.7f),new Vector3(2.4f,2.3f,-9.4f),Smooth(t-2.2f));target=new Vector3(1.2f,.85f,-7.45f);}
+        else if(t<5.5f){var p=moviePuck.localPosition;position=p+new Vector3(.8f,2.5f,-3.3f);target=p+new Vector3(0,0,1.9f);}
+        else if(t<8.7f){position=Vector3.Lerp(new Vector3(2.2f,4.4f,.5f),new Vector3(2.9f,5.8f,-.5f),Smooth((t-5.5f)/3.2f));target=new Vector3(0,.4f,5.1f);}
+        else{position=Vector3.Lerp(new Vector3(0,11,-16),new Vector3(0,10.5f,-15),Smooth((t-8.7f)/3.3f));target=new Vector3(0,0,0);}
+        movieCamera.transform.position=position;movieCamera.transform.LookAt(target);
+    }
+    static void CaptureAttract(string path){
+        var request=new UniversalRenderPipeline.SingleCameraRequest{destination=movieTarget};
+        RenderPipeline.SubmitRenderRequest(movieCamera,request);
+        var prior=RenderTexture.active;RenderTexture.active=movieTarget;
+        movieImage.ReadPixels(new Rect(0,0,movieTarget.width,movieTarget.height),0,0);movieImage.Apply();RenderTexture.active=prior;
+        File.WriteAllBytes(path,movieImage.EncodeToJPG(94));
+    }
+    static void CaptureAttractTick(){try{SampleAttract(movieFrame/30f);CaptureAttract(MovieFolder+"/"+movieFrame.ToString("D4")+".jpg");movieFrame++;if(movieFrame%30==0)File.WriteAllText("output/attract-v2/progress.txt",movieFrame+" / "+MovieFrames);if(movieFrame>=MovieFrames){EndAttract();File.WriteAllText("output/attract-v2/done.txt","360 frames / 1920x1080 / 30 fps");}}catch(Exception e){EndAttract();Debug.LogException(e);}}
+    static void MoviePlayModeChanged(PlayModeStateChange state){if(state==PlayModeStateChange.ExitingEditMode)EndAttract();}
+    static void EndAttract(){AssemblyReloadEvents.beforeAssemblyReload-=EndAttract;EditorApplication.playModeStateChanged-=MoviePlayModeChanged;EditorApplication.update-=CaptureAttractTick;if(movieTarget!=null){movieTarget.Release();UnityEngine.Object.DestroyImmediate(movieTarget);}if(movieImage!=null)UnityEngine.Object.DestroyImmediate(movieImage);EditorSceneManager.CloseScene(movieScene,true);SceneManager.SetActiveScene(previousScene);for(int i=0;i<oldLights.Length;i++)if(oldLights[i]!=null)oldLights[i].enabled=oldLightEnabled[i];movieCamera=null;}
+}

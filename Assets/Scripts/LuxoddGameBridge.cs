@@ -113,6 +113,15 @@ public class LuxoddGameBridge : MonoBehaviour
         // prefab (via LuxoddPersistor) also persists so references stay valid.
         if (transform.parent == null) DontDestroyOnLoad(gameObject);
 
+#if LUXODD_INTEGRATION
+        // Recover missing prefab wiring from this plugin hierarchy only.
+        if (_webSocketService == null) _webSocketService = transform.root.GetComponentInChildren<WebSocketService>(true);
+        if (_commandHandler == null) _commandHandler = transform.root.GetComponentInChildren<WebSocketCommandHandler>(true);
+        if (_healthCheckService == null) _healthCheckService = transform.root.GetComponentInChildren<HealthStatusCheckService>(true);
+        if (_sessionFlowController == null) _sessionFlowController = transform.root.GetComponentInChildren<SessionFlowController>(true);
+        if (_webSocketService != null) _webSocketService.ConnectedToServerEvent.AddListener(OnSocketConnectionChanged);
+#endif
+
         // When a new scene loads, auto-wire ourselves into whatever
         // LevelManager exists there (if any).
         UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
@@ -121,7 +130,19 @@ public class LuxoddGameBridge : MonoBehaviour
     void OnDestroy()
     {
         UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+#if LUXODD_INTEGRATION
+        if (_webSocketService != null) _webSocketService.ConnectedToServerEvent.RemoveListener(OnSocketConnectionChanged);
+#endif
+        if (Instance == this) Instance = null;
     }
+#if LUXODD_INTEGRATION
+    void OnSocketConnectionChanged(bool connected)
+    {
+        // A closed socket must not leave the bridge claiming it can send scores.
+        // The normal connect callback initializes health checks and user state.
+        if (!connected) _connected = false;
+    }
+#endif
 
     void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
     {
@@ -322,16 +343,42 @@ public class LuxoddGameBridge : MonoBehaviour
     /// the ranking request fails), it still shows the same panel with the
     /// current player's score so the loss flow remains visually testable.
     /// </summary>
-    public void ShowLeaderboard(int fallbackScore, string outcomeMessage, Action onFinished)
+    // Read rankings for the non-terminal win screen without opening any transaction UI.
+    public void FetchResultsLeaderboard(Action<LeaderboardPanel.LeaderboardData[],string,int,int,bool> done)
     {
 #if LUXODD_INTEGRATION
-        if (_connected && _commandHandler != null)
+        if(_connected && _commandHandler!=null)
         {
-            FetchAndShowLeaderboard(fallbackScore, outcomeMessage, onFinished);
+            _commandHandler.SendLeaderboardRequestCommand(response=>
+            {
+                var entries=new System.Collections.Generic.List<LeaderboardPanel.LeaderboardData>();
+                if(response.Leaderboard!=null) foreach(var row in response.Leaderboard)
+                {
+                    if(entries.Count>=10) break;
+                    entries.Add(new LeaderboardPanel.LeaderboardData {rank=row.Rank,playerName=row.PlayerName,score=row.TotalScore});
+                }
+                var me=response.CurrentUserData;
+                done?.Invoke(entries.ToArray(),me!=null?me.PlayerName:"YOU",me!=null?me.Rank:0,me!=null?me.TotalScore:0,true);
+            },(code,message)=>done?.Invoke(null,"YOU",0,0,false));
             return;
         }
 #endif
+        done?.Invoke(null,"YOU",0,0,false);
+    }
+
+    public void ShowLeaderboard(int fallbackScore, string outcomeMessage, Action onFinished)
+    {
+        // Start the five-second display immediately. A slow ranking request must
+        // neither postpone the transaction nor reopen a dismissed leaderboard.
         ShowLocalLeaderboard(fallbackScore, outcomeMessage, onFinished);
+        if (leaderboardPanel == null) return;
+        var panel = leaderboardPanel;
+        int presentation = panel.PresentationId;
+        FetchResultsLeaderboard((entries, name, rank, score, connected) =>
+        {
+            if (connected && panel != null)
+                panel.RefreshEntries(presentation, entries, rank, score, name);
+        });
     }
 
     public void ShowLeaderboard(int fallbackScore, Action onFinished)
@@ -344,14 +391,21 @@ public class LuxoddGameBridge : MonoBehaviour
     /// the leaderboard again. LevelManager calls this after any local
     /// onboarding retry has already been resolved.
     /// </summary>
+    void OfferPlatformRetry(Action retry, Action end)
+    {
+        Time.timeScale=0f;
+        var panel=LevelManager.Instance!=null?LevelManager.Instance.levelFailedPanel:null;
+        if(panel!=null) panel.ShowTransactionRetry(retry,end);
+        else Debug.LogError("[LuxoddBridge] Recovery panel missing; run remains paused.");
+    }
+
     public void ShowPaidContinueOptions(Action onContinue, Action onEnd)
     {
 #if LUXODD_INTEGRATION
         if (_webSocketService == null)
         {
-            Debug.LogError("[LuxoddBridge] Continue popup cannot open: WebSocketService is missing.");
-            EndCurrentSession();
-            onEnd?.Invoke();
+            Debug.LogWarning("[LuxoddBridge] Continue popup cannot open: WebSocketService is missing.");
+            OfferPlatformRetry(()=>ShowPaidContinueOptions(onContinue,onEnd),()=>{EndCurrentSession(); onEnd?.Invoke();});
             return;
         }
 
@@ -382,12 +436,12 @@ public class LuxoddGameBridge : MonoBehaviour
         {
             new LeaderboardPanel.LeaderboardData
             {
-                rank = 1,
+                rank = 0,
                 playerName = "YOU",
                 score = safeScore
             }
         };
-        leaderboardPanel.Show(entry, 1, safeScore, "YOU", outcomeMessage, onFinished);
+        leaderboardPanel.Show(entry, 0, safeScore, "YOU", outcomeMessage, onFinished);
     }
 
 #if LUXODD_INTEGRATION
@@ -445,7 +499,7 @@ public class LuxoddGameBridge : MonoBehaviour
                 {
                     list.Add(new LeaderboardPanel.LeaderboardData
                     {
-                        rank = myRank > 0 ? myRank : list.Count + 1,
+                        rank = myRank,
                         playerName = myName,
                         score = myScore
                     });
@@ -489,14 +543,14 @@ public class LuxoddGameBridge : MonoBehaviour
         const float MinimumPostDeathDelay = 1f;
         const float RequiredNeutralTime = 0.25f;
 
-        float delay = 0f;
+        float delay = LeaderboardPanel.InputSettledAfterDisplay ? MinimumPostDeathDelay : 0f;
         while (delay < MinimumPostDeathDelay)
         {
             delay += Time.unscaledDeltaTime;
             yield return null;
         }
 
-        float neutralTime = 0f;
+        float neutralTime = LeaderboardPanel.InputSettledAfterDisplay ? RequiredNeutralTime : 0f;
         while (neutralTime < RequiredNeutralTime)
         {
             bool primaryHeld = ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Black);
@@ -530,11 +584,8 @@ public class LuxoddGameBridge : MonoBehaviour
         catch (Exception exception)
         {
             _sessionOptionPending = false;
-            Time.timeScale = 1f;
-            Debug.LogError("[LuxoddBridge] Failed to open Continue transaction: " +
-                           exception.Message);
-            EndCurrentSession();
-            onEnd?.Invoke();
+            Debug.LogWarning("[LuxoddBridge] Failed to open Continue transaction: " + exception.Message);
+            OfferPlatformRetry(()=>ShowPaidContinueOptions(onContinue,onEnd),()=>{EndCurrentSession(); onEnd?.Invoke();});
         }
 
         // Do not add a local timeout here. Luxodd owns balance checks and its
@@ -552,9 +603,8 @@ public class LuxoddGameBridge : MonoBehaviour
 #if LUXODD_INTEGRATION
         if (!PlatformTransactionsAvailable || _commandHandler == null)
         {
-            Debug.LogError("[LuxoddBridge] Restart popup cannot open: required plugin service is missing.");
-            EndCurrentSession();
-            onEnd?.Invoke();
+            Debug.LogWarning("[LuxoddBridge] Restart popup cannot open: required plugin service is missing.");
+            OfferPlatformRetry(()=>OnCampaignComplete(totalStrokes,totalStars,finalScore,onRestart,onEnd),()=>{EndCurrentSession(); onEnd?.Invoke();});
             return;
         }
 
@@ -604,7 +654,7 @@ public class LuxoddGameBridge : MonoBehaviour
             yield return null;
         }
 
-        float neutralTime = 0f;
+        float neutralTime = LeaderboardPanel.InputSettledAfterDisplay ? RequiredNeutralTime : 0f;
         while (neutralTime < RequiredNeutralTime)
         {
             bool primaryHeld = ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Black);
@@ -637,11 +687,8 @@ public class LuxoddGameBridge : MonoBehaviour
         catch (Exception exception)
         {
             _sessionOptionPending = false;
-            Time.timeScale = 1f;
-            Debug.LogError("[LuxoddBridge] Failed to open Restart transaction: " +
-                           exception.Message);
-            EndCurrentSession();
-            onEnd?.Invoke();
+            Debug.LogWarning("[LuxoddBridge] Failed to open Restart transaction: " + exception.Message);
+            OfferPlatformRetry(()=>TriggerRestartPopup(onEnd),()=>{EndCurrentSession(); onEnd?.Invoke();});
         }
 
         // Restart success intentionally has no local callback or timeout. The
@@ -750,6 +797,7 @@ public class LuxoddGameBridge : MonoBehaviour
         public int highestUnlocked;
         public int[] bestStars;
         public int[] bestScores;
+        public int[] bestStrokes; // Zero means no completed attempt in older saves.
     }
 
     void LoadUserState()
@@ -795,7 +843,8 @@ public class LuxoddGameBridge : MonoBehaviour
             currentLevel = 0,
             highestUnlocked = 0,
             bestStars = new int[totalLevels],
-            bestScores = new int[totalLevels]
+            bestScores = new int[totalLevels],
+            bestStrokes = new int[totalLevels]
         };
     }
 
@@ -811,6 +860,12 @@ public class LuxoddGameBridge : MonoBehaviour
     /// best-scores, and current-level are all monotonic in this game, so
     /// max(server, local) is always the correct reconciliation.
     /// </summary>
+    public static int MergeBestStrokes(int local,int remote)
+    {
+        if(local<=0) return Mathf.Max(0,remote);
+        return remote<=0?local:Mathf.Min(local,remote);
+    }
+
     void ApplyServerStateToPlayerPrefs()
     {
         if (_serverState == null) return;
@@ -842,6 +897,12 @@ public class LuxoddGameBridge : MonoBehaviour
                 int local = PlayerPrefs.GetInt(LevelManager.PrefLevelScore + i, 0);
                 PlayerPrefs.SetInt(LevelManager.PrefLevelScore + i,
                                    Mathf.Max(serverScore, local));
+            }
+
+            if (_serverState.bestStrokes != null && i < _serverState.bestStrokes.Length)
+            {
+                int merged=MergeBestStrokes(PlayerPrefs.GetInt(LevelManager.PrefLevelBestStrokes+i,0),_serverState.bestStrokes[i]);
+                if(merged>0) PlayerPrefs.SetInt(LevelManager.PrefLevelBestStrokes+i,merged);
             }
 
             if ((serverStars > 0 || serverScore > 0) && i + 1 < totalLevels)
@@ -897,8 +958,11 @@ public class LuxoddGameBridge : MonoBehaviour
             System.Array.Resize(ref _serverState.bestStars, totalLevels);
         if (_serverState.bestScores == null || _serverState.bestScores.Length < totalLevels)
             System.Array.Resize(ref _serverState.bestScores, totalLevels);
+        if (_serverState.bestStrokes == null || _serverState.bestStrokes.Length < totalLevels)
+            System.Array.Resize(ref _serverState.bestStrokes, totalLevels);
         for (int i = 0; i < totalLevels; i++)
         {
+            _serverState.bestStrokes[i] = PlayerPrefs.GetInt(LevelManager.PrefLevelBestStrokes + i, 0);
             _serverState.bestStars[i] = PlayerPrefs.GetInt(LevelManager.PrefLevelStars + i, 0);
             _serverState.bestScores[i] = PlayerPrefs.GetInt(LevelManager.PrefLevelScore + i, 0);
         }

@@ -28,7 +28,7 @@ public class BouncePad : MonoBehaviour
         if (Time.time - _lastFireTime < cooldown) return;
         var rb = other.attachedRigidbody;
         if (rb == null) return;
-        if (rb.GetComponent<PuckController>() == null) return;
+        if ((rb.GetComponent<PuckController>() == null && rb.GetComponent<TutorialPracticePuck>() == null)) return;
 
         Vector3 dir = transform.forward; dir.y = 0f;
         if (dir.sqrMagnitude < 0.001f) dir = Vector3.forward;
@@ -51,6 +51,7 @@ public class BouncePad : MonoBehaviour
         // Replace velocity entirely — pads override momentum so chains work
         rb.linearVelocity = dir * launchSpeed;
 
+        if(rb.GetComponent<TutorialPracticePuck>()!=null) return;
         if (LevelManager.Instance != null)
         {
             LevelManager.Instance.PlayWallSpark(transform.position, dir);

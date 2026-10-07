@@ -9,8 +9,8 @@ using UnityEngine;
 /// Cabinet mapping:
 ///   Joystick = puck aim direction (digital or analog)
 ///   Black    = hold to charge, release to shoot
-///   Green    = hold for slower, fine aim rotation
-///   White    = cancel the current shot
+///   Green    = undo the previous shot
+///   Red      = cancel the current shot
 ///
 /// Orange remains reserved for the Luxodd system/help overlay. Menu confirmation
 /// also uses Black, but the post-death popup is delayed until Black has been
@@ -53,8 +53,8 @@ public sealed class BucaArcadeControlAdapter : MonoBehaviour, IBucaArcadeControl
         ShootPressedThisFrame = ArcadeControls.GetButtonDown(ArcadeButtonColor.Black);
         ShootReleasedThisFrame = ArcadeControls.GetButtonUp(ArcadeButtonColor.Black);
         IsShootButtonPressed = ArcadeControls.GetButton(ArcadeButtonColor.Black);
-        IsFineTuneButtonPressed = ArcadeControls.GetButton(ArcadeButtonColor.Green);
-        CancelPressedThisFrame = ArcadeControls.GetButtonDown(ArcadeButtonColor.White);
+        IsFineTuneButtonPressed = false; // Green belongs to Undo.
+        CancelPressedThisFrame = ArcadeControls.GetButtonDown(ArcadeButtonColor.Red);
 
         if (ShootPressedThisFrame) ShootPressed?.Invoke();
         if (ShootReleasedThisFrame) ShootReleased?.Invoke();

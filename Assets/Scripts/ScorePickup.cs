@@ -1,17 +1,15 @@
 using UnityEngine;
 
 /// <summary>
-/// Small glowing orb on the playfield. When the puck touches it,
-/// awards bonus score, plays a brief scale-pop animation, then
-/// self-destroys. Placed in level prefabs as small yellow orbs.
-///
-/// Orbs are pure carrot for the player — they don't block the puck,
-/// don't kill, just reward skill shots that pass through them.
+/// Optional collectible reward. Wooden stars grant a shot heart plus bonus points.
+/// Collected objects stay available for Undo until the level unloads.
 /// </summary>
 public class ScorePickup : MonoBehaviour
 {
     [Tooltip("Bonus points added to the live score on collection.")]
     public int bonusPoints = 75;
+    [Tooltip("Wooden reward stars also grant one extra shot heart.")]
+    public bool grantsHeart;
     [Tooltip("Scale multiplier at collection for the pop effect.")]
     public float popScale = 2.5f;
     [Tooltip("Seconds for the pop+fade animation.")]
@@ -47,11 +45,16 @@ public class ScorePickup : MonoBehaviour
     {
         if (_collected) return;
         var rb = other.attachedRigidbody;
-        if (rb == null || rb.GetComponent<PuckController>() == null) return;
+        if (rb == null || (rb.GetComponent<PuckController>() == null && rb.GetComponent<TutorialPracticePuck>() == null)) return;
+        var practicePuck=rb.GetComponent<TutorialPracticePuck>();
+        if(practicePuck!=null) { practicePuck.practice.UseMechanic(); gameObject.SetActive(false); return; }
         _collected = true;
 
         if (LevelManager.Instance != null)
+        {
             LevelManager.Instance.AddBonusScore(bonusPoints, transform.position);
+            if(grantsHeart) LevelManager.Instance.AddStarHeart(transform.position);
+        }
 
         if (AudioManager.Instance != null)
             AudioManager.Instance.PlayPickup(0);
@@ -74,6 +77,15 @@ public class ScorePickup : MonoBehaviour
             transform.localScale = _baseScale * s;
             yield return null;
         }
-        Destroy(gameObject);
+        gameObject.SetActive(false); // Retain it until level unload so Undo can restore it.
+    }
+    public bool Collected => _collected;
+    public void RestoreCollected(bool collected)
+    {
+        StopAllCoroutines();
+        _collected=collected;
+        transform.localScale=_baseScale;
+        var collider=GetComponent<Collider>(); if(collider!=null) collider.enabled=!collected;
+        gameObject.SetActive(!collected);
     }
 }

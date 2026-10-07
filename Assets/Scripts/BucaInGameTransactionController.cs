@@ -79,8 +79,8 @@ public sealed class BucaInGameTransactionController : MonoBehaviour
     {
 #if LUXODD_INTEGRATION
         if (!TryBeginTransaction("Continue")) return false;
-        OpenContinueTransaction(
-            Mathf.Max(1, oneBasedLevel), Mathf.Max(0, score), onContinue, onEnd);
+        StartCoroutine(ContinueAfterRelease(
+            Mathf.Max(1, oneBasedLevel), Mathf.Max(0, score), onContinue, onEnd));
         return true;
 #else
         return false;
@@ -125,6 +125,20 @@ public sealed class BucaInGameTransactionController : MonoBehaviour
         return true;
     }
 
+    IEnumerator ContinueAfterRelease(int oneBasedLevel,int score,Action onContinue,Action onEnd)
+    {
+        yield return WaitForPrimaryRelease();
+        if(_transactionPending) OpenContinueTransaction(oneBasedLevel,score,onContinue,onEnd);
+    }
+
+    void ShowConnectionRetry(Action retry,Action end)
+    {
+        Time.timeScale=0f;
+        var panel=LevelManager.Instance!=null?LevelManager.Instance.levelFailedPanel:null;
+        if(panel!=null) panel.ShowTransactionRetry(retry,end);
+        else Debug.LogError("[BucaTransactions] Recovery panel missing; keeping the run paused instead of ejecting the player.");
+    }
+
     void OpenContinueTransaction(int oneBasedLevel, int score,
         Action onContinue, Action onEnd)
     {
@@ -151,9 +165,11 @@ public sealed class BucaInGameTransactionController : MonoBehaviour
         }
         catch (Exception exception)
         {
-            Debug.LogError("[BucaTransactions] Continue popup failed: " + exception.Message);
+            Debug.LogWarning("[BucaTransactions] Continue popup failed: " + exception.Message);
             _transactionPending = false;
-            FinalizeAndReturn(oneBasedLevel, score, onEnd);
+            ShowConnectionRetry(
+                ()=>TryShowContinue(oneBasedLevel,score,onContinue,onEnd),
+                ()=>FinalizeAndReturn(oneBasedLevel,score,onEnd));
         }
     }
 
@@ -197,11 +213,11 @@ public sealed class BucaInGameTransactionController : MonoBehaviour
             }
             catch (Exception exception)
             {
-                Debug.LogError("[BucaTransactions] Restart popup failed: " + exception.Message);
+                Debug.LogWarning("[BucaTransactions] Restart popup failed: " + exception.Message);
                 _transactionPending = false;
-                Time.timeScale = 1f;
-                ((WebSocketService)webSocketService).BackToSystem();
-                onEnd?.Invoke();
+                ShowConnectionRetry(
+                    ()=> { _transactionPending=true; Time.timeScale=0; OpenRestartPopup(); },
+                    ()=> { Time.timeScale=1; ((WebSocketService)webSocketService).BackToSystem(); onEnd?.Invoke(); });
             }
         }
     }
@@ -228,6 +244,7 @@ public sealed class BucaInGameTransactionController : MonoBehaviour
 
     static IEnumerator WaitForPrimaryRelease()
     {
+        if (LeaderboardPanel.InputSettledAfterDisplay) yield break;
         // Black is both BUCA fire and the Luxodd confirm button. Delay the
         // transaction until the failure input has been fully released.
         const float minimumDelay = 0.65f;

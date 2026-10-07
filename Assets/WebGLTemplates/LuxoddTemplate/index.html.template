@@ -34,9 +34,13 @@
     canvas.style.width = cssW + "px";
     canvas.style.height = cssH + "px";
 
-    const dpr = window.devicePixelRatio || 1;
-    const pxW = Math.ceil(cssW * dpr);
-    const pxH = Math.ceil(cssH * dpr);
+    // Keep full-screen CSS/input coordinates, but avoid Retina/4K GPU cost.
+    // Rotate the 1080p budget with the viewport; never upscale above native DPR.
+    const longSide = Math.max(cssW, cssH);
+    const shortSide = Math.min(cssW, cssH);
+    const dpr = Math.min(window.devicePixelRatio || 1, 1920 / longSide, 1080 / shortSide);
+    const pxW = Math.max(1, Math.floor(cssW * dpr));
+    const pxH = Math.max(1, Math.floor(cssH * dpr));
 
     if (canvas.width !== pxW) canvas.width = pxW;
     if (canvas.height !== pxH) canvas.height = pxH;

@@ -39,6 +39,7 @@ public static class GlossyMenuButtons
     static void Apply(Scene scene)
     {
         if (scene.name != MenuSceneName) return;
+        if (Object.FindAnyObjectByType<ToyBoxMenuController>() != null) return;
         var sprite = GetGlossSprite();
 
         foreach (var name in ButtonNames)

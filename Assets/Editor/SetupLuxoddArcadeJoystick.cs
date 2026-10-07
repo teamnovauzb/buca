@@ -126,7 +126,7 @@ public static class SetupLuxoddArcadeJoystick
             "• Joystick Left / Right: rotate aim through 360°\n" +
             "• Hold Black: build shot power\n" +
             "• Release Black: shoot\n" +
-            "• White: cancel\n\n" +
+            "• Red: cancel\n\n" +
             "Orange remains reserved for the Luxodd system overlay.", "OK");
     }
 }

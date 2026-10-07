@@ -14,6 +14,7 @@ using System.Collections;
 public class LevelCompletePanel : MonoBehaviour
 {
     [Header("Panel structure")]
+    public ToyBoxResults3D premiumResults;
     public CanvasGroup group;
     public RectTransform card;
 
@@ -78,6 +79,7 @@ public class LevelCompletePanel : MonoBehaviour
     /// </summary>
     public void Show(ScoreCalculator.ScoreBreakdown score, System.Action onContinue)
     {
+        if(premiumResults!=null) { premiumResults.Show(score,onContinue); return; }
         _onContinue = onContinue;
         _skipped = false;
         _waitingForInput = false;
@@ -106,6 +108,7 @@ public class LevelCompletePanel : MonoBehaviour
 
     public void Hide()
     {
+        if(premiumResults!=null) premiumResults.Hide(false);
         _waitingForInput = false;
         if (group != null) { group.alpha = 0f; group.interactable = false; group.blocksRaycasts = false; }
         gameObject.SetActive(false);

@@ -204,15 +204,12 @@ public static class PrebuiltRuntimeContentBaker
             new Color(0.90f, 0.38f, 0.025f, 1f), new Color(1.25f, 0.40f, 0.02f, 1f));
         GameObject markerPrefab = CreateOrUpdateRouteMarkerPrefab(gold, halo);
 
-        BakeRouteIntoLevelPrefab(10, Route(2.30f, -2.00f, 2.30f, 0.70f, 1.45f, 3.25f), markerPrefab);
-        BakeRouteIntoLevelPrefab(15, Route(2.60f, -2.20f, 0.80f, 0.75f, -1.35f, 3.35f), markerPrefab);
         BakeRouteIntoLevelPrefab(21, Route(-1.05f, -1.80f, 0.85f, 1.10f, -1.05f, 4.00f), markerPrefab);
-        BakeRouteIntoLevelPrefab(25, Route(0.00f, -3.00f, 0.65f, 0.35f, -0.35f, 3.10f), markerPrefab);
         BakeRouteIntoLevelPrefab(26, Route(0.00f, -2.00f, 0.00f, 0.35f, 0.00f, 3.05f), markerPrefab);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("[PrebuiltRuntimeContentBaker] Step 3 complete: preferred-route markers are serialized in five level prefabs.");
+        Debug.Log("[PrebuiltRuntimeContentBaker] Step 3 complete: preferred-route markers are serialized in selected hard level prefabs.");
     }
 
     [MenuItem("RealBuca/Prebuild/Step 4 - Gameplay Presentation Controllers")]
@@ -895,6 +892,7 @@ public static class PrebuiltRuntimeContentBaker
         }
 
         material.name = name;
+        if (name == "AimGuide" || name == "AimDots") material.shader = Shader.Find("BUCA/CyanTrajectory");
         if (material.HasProperty("_MainTex"))
             material.SetTexture("_MainTex", texture != null ? texture : Texture2D.whiteTexture);
         if (material.HasProperty("_BaseMap"))
@@ -1529,7 +1527,7 @@ public static class PrebuiltRuntimeContentBaker
                 font, uiSprite, new Vector2(0f, -184f), new Color(0.34f, 0.12f, 0.52f, 1f));
 
             TMP_Text controls = CreateUiText(card.transform, "Controls", font,
-                "BLACK  SELECT     •     WHITE  BACK", 19f,
+                "BLACK  SELECT     •     RED  BACK", 19f,
                 new Color(0.50f, 0.72f, 0.86f, 0.88f),
                 new Vector2(0f, -284f), new Vector2(760f, 34f));
             controls.characterSpacing = 2f;
@@ -1624,37 +1622,9 @@ public static class PrebuiltRuntimeContentBaker
 
     static GameObject CreateOrUpdateRouteMarkerPrefab(Material gold, Material haloMaterial)
     {
-        GameObject orb = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        orb.name = "PreferredRouteMarker";
-        try
-        {
-            orb.transform.localScale = Vector3.one * 0.34f;
-            MeshRenderer renderer = orb.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = gold;
-            SphereCollider collider = orb.GetComponent<SphereCollider>();
-            collider.isTrigger = true;
-            collider.radius = 1.45f;
-
-            ScorePickup pickup = orb.AddComponent<ScorePickup>();
-            pickup.bonusPoints = 125;
-            pickup.idleSpinSpeed = 115f;
-            pickup.idleBobAmplitude = 0.07f;
-
-            GameObject halo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            halo.name = "GoldRouteHalo";
-            halo.transform.SetParent(orb.transform, false);
-            halo.transform.localPosition = new Vector3(0f, -0.60f, 0f);
-            halo.transform.localScale = new Vector3(1.75f, 0.035f, 1.75f);
-            Collider haloCollider = halo.GetComponent<Collider>();
-            if (haloCollider != null) UnityEngine.Object.DestroyImmediate(haloCollider);
-            halo.GetComponent<MeshRenderer>().sharedMaterial = haloMaterial;
-
-            return PrefabUtility.SaveAsPrefabAsset(orb, RouteMarkerPrefabPath);
-        }
-        finally
-        {
-            UnityEngine.Object.DestroyImmediate(orb);
-        }
+        // The route reward art is authored by the star baker, never regenerated in gameplay.
+        WoodenStarPickupBaker.Bake();
+        return AssetDatabase.LoadAssetAtPath<GameObject>(RouteMarkerPrefabPath);
     }
 
     static Vector3[] Route(float x1, float z1, float x2, float z2, float x3, float z3)
@@ -1678,11 +1648,11 @@ public static class PrebuiltRuntimeContentBaker
 
             GameObject routeRoot = new GameObject("PreferredRoute_Bonus");
             routeRoot.transform.SetParent(root.transform, false);
-            for (int i = 0; i < positions.Length; i++)
+            for (int i = 0; i < Mathf.Min(2, positions.Length); i++)
             {
                 GameObject marker = (GameObject)PrefabUtility.InstantiatePrefab(markerPrefab, routeRoot.transform);
                 marker.name = $"GoldRouteMarker_{i + 1}_Plus125";
-                marker.transform.localPosition = positions[i];
+                marker.transform.localPosition = positions[i == 0 ? 0 : positions.Length - 1];
             }
             PrefabUtility.SaveAsPrefabAsset(root, path);
         }
@@ -2078,8 +2048,7 @@ public static class PrebuiltRuntimeContentBaker
             AssetDatabase.CreateAsset(material, TrajectoryMaterialPath);
         }
 
-        if (source != null)
-            material.shader = source.shader;
+        material.shader = Shader.Find("BUCA/CyanTrajectory");
         if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", null);
         if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", null);
         if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", Color.white);

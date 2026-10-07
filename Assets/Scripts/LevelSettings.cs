@@ -14,7 +14,7 @@ public class LevelSettings : ScriptableObject
     [Tooltip("Level par and the stroke target for 3 stars. Above par = 2 stars, above 2× par = 1 star.")]
     public int threeStarStrokes = 2;
 
-    [Tooltip("Legacy shot-life budget. Ignored while LevelManager Use Shot Lives is disabled (the normal BUCA rule).")]
+    [Tooltip("Starting move allowance. A missed shot consumes one move; the campaign starts with 5 and adds 1 per level after level 5.")]
     [Min(1)]
     public int maxLives = 3;
 

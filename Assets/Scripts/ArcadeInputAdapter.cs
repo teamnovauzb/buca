@@ -17,10 +17,10 @@ using UnityEngine;
 ///   Blue   = JoystickButton4
 ///   Purple = JoystickButton5
 ///   Orange = JoystickButton8  (system overlay / help)
-///   White  = JoystickButton9  (system Back / Cancel)
+///   White  = JoystickButton9  (system Menu)
 ///
 /// Use Black for menu confirmation and the primary gameplay action,
-/// and White for back/cancel. Orange is reserved for the Luxodd system
+/// and Red for back/cancel. White (Menu) and Orange (Help) are reserved for the Luxodd system
 /// overlay/help and must never drive gameplay.
 /// </summary>
 public static class ArcadeInputAdapter
@@ -95,12 +95,12 @@ public static class ArcadeInputAdapter
 
     /// <summary>Black is the canonical menu Confirm button.</summary>
     public static bool ConfirmDown() => GetButtonDown(Button.Black);
-    /// <summary>White is the canonical "Back / Cancel" button.</summary>
-    public static bool CancelDown() => GetButtonDown(Button.White);
+    /// <summary>Red is the canonical "Back / Cancel" button.</summary>
+    public static bool CancelDown() => GetButtonDown(Button.Red);
 
     /// <summary>
     /// True when a player-owned action button is pressed. Orange opens the
-    /// Luxodd system/help overlay and White is the system back/cancel action,
+    /// Luxodd system/help overlay and White is the system menu action,
     /// so neither is included in "press any gameplay button" prompts.
     /// </summary>
     public static bool AnyGameplayButtonDown()

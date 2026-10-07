@@ -169,7 +169,7 @@ public static class AddStarterMechanics
         g.transform.localScale = alongZ ? new Vector3(0.5f, 0.06f, len) : new Vector3(len, 0.06f, 0.5f);
         if (_deadly != null) g.GetComponent<MeshRenderer>().sharedMaterial = _deadly;
         g.GetComponent<Collider>().isTrigger = true;                  // a swallow zone
-        g.AddComponent<DeadlyTrigger>();
+        BrokenBridgeGutterBaker.Apply(g.AddComponent<DeadlyTrigger>());
     }
 
     static void AddKinematicRb(GameObject go)

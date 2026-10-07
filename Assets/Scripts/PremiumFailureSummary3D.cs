@@ -64,8 +64,8 @@ public sealed class PremiumFailureSummary3D : MonoBehaviour
         Color resultColor = hasAttempt && difference <= 0 ? Gold : Coral;
         SetStack(_title, NormalizeOutcome(outcome), Coral);
         SetStack(_level, $"LEVEL {Mathf.Max(1, levelNumber)}", Cyan);
-        SetStack(_holeResult, holeLine, resultColor);
-        SetStack(_strokes, $"STROKES  {Mathf.Max(0, strokes)}   •   PAR  {Mathf.Max(1, par)}", Ice);
+        SetStack(_holeResult, "", Ice);
+        SetStack(_strokes, $"SHOTS  {Mathf.Max(0, strokes)}", Ice);
     }
 
     public void Show()

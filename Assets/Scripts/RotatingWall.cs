@@ -32,7 +32,7 @@ public class RotatingWall : MonoBehaviour
 
     void FixedUpdate()
     {
-        _rb.MoveRotation(GetPredictedRotation(Time.time));
+        _rb.MoveRotation(GetPredictedRotation(BoardMechanicClock.Time));
     }
 
     /// <summary>

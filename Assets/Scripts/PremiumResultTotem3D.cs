@@ -76,7 +76,7 @@ public sealed class PremiumResultTotem3D : MonoBehaviour
         SetText(_levelText, $"LEVEL {levelNumber}  •  {puckReward}");
         SetText(_resultText, score.golfResult);
         SetText(_strokesText,
-            $"{score.strokesUsed} {strokeWord}  /  PAR {score.par}  •  {golfMeaning}");
+            $"{score.strokesUsed} SHOTS");
 
         Color resultColor = score.strokesToPar <= 0 ? Gold : Coral;
         _resultText.color = resultColor;
