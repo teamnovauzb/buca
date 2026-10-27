@@ -20,7 +20,12 @@ public sealed class AnimalSurpriseMarkers : MonoBehaviour
         var instance=Instantiate(prefab,menu.artwork,false);instance.view=menu;
         foreach(var child in instance.GetComponentsInChildren<Transform>(true))child.gameObject.layer=menu.artwork.gameObject.layer;
         // Above scenery, below the train and controls.
-        if(menu.locomotive!=null)instance.transform.SetSiblingIndex(menu.locomotive.GetSiblingIndex());
+        if(menu.locomotive!=null)
+        {
+            Transform trainLayer=menu.locomotive;
+            while(trainLayer.parent!=null && trainLayer.parent!=menu.artwork)trainLayer=trainLayer.parent;
+            instance.transform.SetSiblingIndex(trainLayer.GetSiblingIndex());
+        }
         instance.Refresh();
     }
     void OnEnable(){view=GetComponentInParent<TwilightIllustratedMenu>();Refresh();}
@@ -31,7 +36,8 @@ public sealed class AnimalSurpriseMarkers : MonoBehaviour
         {
             int index=levels[i]-1;
             if(index>=view.route.Length)continue;
-            bool visible=true;
+            bool visible=showAllForPreview || i>=friendIds.Length || !AnimalTrainCollection.IsRiding(friendIds[i])
+                || AnimalTrainCollection.IsWaitingToBoard(friendIds[i]);
             markers[i].gameObject.SetActive(visible);
             if(!visible)continue;
             markers[i].localScale=Vector3.one;

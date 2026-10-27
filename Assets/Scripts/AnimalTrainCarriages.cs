@@ -1,8 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>Collected friends ride in individual, distance-driven carriages.</summary>
-public sealed class AnimalTrainCarriages : MonoBehaviour
+/// <summary>Five connected wagons follow the engine; friends board after their completed milestones.</summary>
+[DefaultExecutionOrder(200)]
+public sealed partial class AnimalTrainCarriages : MonoBehaviour
 {
     public TwilightRailwayMap map;
     readonly List<Transform> cars=new List<Transform>();
@@ -10,16 +11,26 @@ public sealed class AnimalTrainCarriages : MonoBehaviour
     readonly List<Transform> couplings=new List<Transform>();
     readonly List<Material> materials=new List<Material>();
     readonly HashSet<string> aboard=new HashSet<string>();
+    readonly Dictionary<string,int> carIndices=new Dictionary<string,int>();
+    readonly List<PremiumPassengerPortrait> portraits=new List<PremiumPassengerPortrait>();
+    readonly List<GameObject> passengerObjects=new List<GameObject>();
+    bool initialized;
     AnimalTrainCollection collection;
     SuitcaseLocomotiveView view;
     float originalSize;
     Vector2 originalRect;
     Material wood, gold, red, iron, walnut;
-    void Start()
+    void Start() => Initialize();
+    public int CarriageCount => cars.Count;
+    public int PassengerCount => aboard.Count;
+    public void Initialize()
     {
+        if(initialized || map==null || map.train==null)return;
+        initialized=true;
         collection=AnimalTrainCollection.Load();
         view=map.GetComponent<SuitcaseLocomotiveView>();
         if(view!=null){originalSize=view.verticalSize;originalRect=map.illustratedMenu.locomotive.sizeDelta;}
+        if(collection!=null)foreach(var friend in collection.friends)CreateCar(friend);
     }
     Material Make(string name,Color color)
     {
@@ -34,8 +45,9 @@ public sealed class AnimalTrainCarriages : MonoBehaviour
         if(type==PrimitiveType.Cube)go.GetComponent<MeshFilter>().sharedMesh=CarriageCraftMesh.RoundedBox;
         go.GetComponent<Renderer>().sharedMaterial=material;return go.transform;
     }
-    void Add(AnimalTrainCollection.Friend friend)
+    void CreateCar(AnimalTrainCollection.Friend friend)
     {
+        if(carIndices.ContainsKey(friend.id))return;
         if(wood==null){
             wood=Make("Burgundy enamel",new Color(.30f,.025f,.055f));gold=Make("Polished brass",new Color(.78f,.49f,.16f));
             red=Make("Burgundy wheel inset",new Color(.12f,.012f,.024f));iron=Make("Dark iron",new Color(.027f,.023f,.022f));walnut=Make("Dark walnut",new Color(.095f,.040f,.018f));
@@ -72,13 +84,25 @@ public sealed class AnimalTrainCarriages : MonoBehaviour
             var hub=Part("Brass axle hub",pivot,PrimitiveType.Sphere,new Vector3(0,0,outward*.2f),new Vector3(.21f,.21f,.12f),gold);
             rolling.Add(pivot);
         }
+        GameObject passenger=null;PremiumPassengerPortrait portrait=null;
         if(friend.passenger!=null){
-            var passenger=Instantiate(friend.passenger,car);passenger.transform.localPosition=new Vector3(0,.98f,0);
+            passenger=Instantiate(friend.passenger,car);passenger.transform.localPosition=new Vector3(0,.98f,0);
             foreach(var t in passenger.GetComponentsInChildren<Transform>(true))t.gameObject.layer=map.train.gameObject.layer;
-            var portrait=passenger.GetComponent<PremiumPassengerPortrait>();if(portrait!=null){portrait.renderingCamera=view.trainCamera;portrait.FaceCamera();}
+            portrait=passenger.GetComponent<PremiumPassengerPortrait>();
+            if(portrait!=null){portrait.enabled=false;portrait.renderingCamera=view!=null?view.trainCamera:null;portrait.FaceCamera();}
+            passenger.SetActive(false);
         }
-        cars.Add(car);wheels.Add(rolling.ToArray());aboard.Add(friend.id);
+        carIndices.Add(friend.id,cars.Count);cars.Add(car);wheels.Add(rolling.ToArray());
+        passengerObjects.Add(passenger);portraits.Add(portrait);
         if(view!=null){float size=originalSize+cars.Count*2.5f*Mathf.Abs(map.train.localScale.x);view.verticalSize=size;map.illustratedMenu.locomotive.sizeDelta=originalRect*(size/originalSize);view.EnsurePassengerResolution(size/originalSize);}
+    }
+    void Add(AnimalTrainCollection.Friend friend)
+    {
+        CreateCar(friend);
+        int index=carIndices[friend.id];
+        if(passengerObjects[index]!=null)passengerObjects[index].SetActive(true);
+        if(portraits[index]!=null)portraits[index].GetComponent<SpriteRenderer>().color=Color.white;
+        aboard.Add(friend.id);
     }
     Vector3 Point(float distance)
     {
@@ -105,10 +129,13 @@ public sealed class AnimalTrainCarriages : MonoBehaviour
         return origin+Vector3.right*((desired.x*z.y-desired.y*z.x)/determinant)
             +Vector3.forward*((x.x*desired.y-x.y*desired.x)/determinant);
     }
-    void LateUpdate()
+    void LateUpdate() => Tick(Time.unscaledDeltaTime);
+    public void Tick(float dt)
     {
+        Initialize();
         if(collection==null||map.train==null)return;
-        foreach(var friend in collection.friends)if(AnimalTrainCollection.Has(friend.id)&&!aboard.Contains(friend.id))Add(friend);
+        foreach(var friend in collection.friends)
+            if(AnimalTrainCollection.IsRiding(friend.id)&&!AnimalTrainCollection.IsWaitingToBoard(friend.id)&&!aboard.Contains(friend.id))Add(friend);
         if(view!=null)view.Frame();
         float scale=Mathf.Abs(map.train.localScale.x);
         float previousDistance=map.RouteDistance-map.trainNoseOffset;
@@ -135,9 +162,10 @@ public sealed class AnimalTrainCarriages : MonoBehaviour
             couplings[i].localPosition=(a+b)*.5f;
             couplings[i].localRotation=Quaternion.FromToRotation(Vector3.right,(b-a).normalized);
             couplings[i].localScale=new Vector3(Vector3.Distance(a,b),.12f*scale,.12f*scale);
-            foreach(var portrait in cars[i].GetComponentsInChildren<PremiumPassengerPortrait>())portrait.FaceCamera();
+            if(portraits[i]!=null && passengerObjects[i].activeSelf)portraits[i].FaceCamera();
             previousDistance=d;
         }
+        TickBoarding(dt);
     }
     void OnDestroy(){foreach(var car in cars)if(car!=null)Release(car.gameObject);foreach(var coupling in couplings)if(coupling!=null)Release(coupling.gameObject);foreach(var material in materials)Release(material);}
     static void Release(Object item){if(Application.isPlaying)Destroy(item);else DestroyImmediate(item);}

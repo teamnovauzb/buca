@@ -435,6 +435,13 @@ public sealed class ToyBoxMenuController : MonoBehaviour
     void StartLevel(int level)
     {
         if (_loading || level < 0 || level >= BucaLevelAvailability.PlayableLevelCount) return;
+        if(level==0 && _page!=Page.Levels && twilightMap!=null)
+        {
+            // New Game and the home countdown share the same arrival as the level map.
+            ShowPage(Page.Levels);
+            twilightMap.RequestPlay();
+            return;
+        }
         _loading = true;
         PlayerPrefs.SetInt(LevelSelectController.PendingLevelKey, level);
         PlayerPrefs.Save();

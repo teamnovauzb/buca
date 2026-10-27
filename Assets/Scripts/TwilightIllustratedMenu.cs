@@ -49,7 +49,7 @@ public sealed class TwilightIllustratedMenu : MonoBehaviour
 
     void OnEnable()
     {
-        if (Application.isPlaying) { Bind(); AnimalSurpriseMarkers.Ensure(this); }
+        if (Application.isPlaying) { Bind(); EnsureTrainViewport(); AnimalSurpriseMarkers.Ensure(this); }
         lastSelected = lastHighest = lastSecond = -1;
         Refresh();
     }
@@ -173,6 +173,7 @@ public sealed class TwilightIllustratedMenu : MonoBehaviour
     {
         if (forestHarborPresentation)
         {
+            if(Application.isPlaying)EnsureTrainViewport();
             var position = map.train.localPosition;
             locomotive.anchoredPosition = new Vector2(position.x, position.z) * 20 + Vector2.up * (forestTrainGroundOffset * forestTrainDisplayScale + forestTrainRailOffset);
             locomotive.localScale = Vector3.one * forestTrainDisplayScale;
@@ -196,6 +197,22 @@ public sealed class TwilightIllustratedMenu : MonoBehaviour
         float perspective = Mathf.Lerp(.7f, 1f, Mathf.InverseLerp(-180, 190, -point.y));
         locomotive.localScale = Vector3.one * perspective;
         if (map.Moving) locomotive.anchoredPosition += Vector2.up * Mathf.Sin(Time.unscaledTime * 14) * .65f;
+    }
+
+    void EnsureTrainViewport()
+    {
+        if(!forestHarborPresentation || artwork==null || locomotive==null || locomotive.parent!=artwork
+            || map==null || map.railway==null || map.railway.Length==0)return;
+        int order=locomotive.GetSiblingIndex();
+        var viewport=new GameObject("TrainTrackViewport",typeof(RectTransform),typeof(UnityEngine.UI.RectMask2D)).GetComponent<RectTransform>();
+        viewport.gameObject.layer=artwork.gameObject.layer;
+        viewport.SetParent(artwork,false);viewport.anchorMin=Vector2.zero;viewport.anchorMax=Vector2.one;
+        viewport.offsetMin=viewport.offsetMax=Vector2.zero;viewport.SetSiblingIndex(order);
+        // The connected train enters from beneath the front map edge. Clip only
+        // its image so trailing wagons never cross the blue border or menu controls.
+        float entranceY=map.railway[0].z*20;
+        viewport.GetComponent<UnityEngine.UI.RectMask2D>().padding=new Vector4(0,ArtHeight*.5f+entranceY,0,0);
+        locomotive.SetParent(viewport,false);
     }
 
     public void ToggleFullscreen()

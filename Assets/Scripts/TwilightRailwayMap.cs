@@ -52,7 +52,8 @@ public sealed class TwilightRailwayMap : MonoBehaviour
     public int Selected => selected;
     public int Parked => parked;
     public bool Moving => moving;
-    public bool Travelling => moving || parked != destination;
+    public bool Travelling => moving || parked != destination || (passengers != null && passengers.Boarding);
+    public bool EnteringTrack => parked < 0;
     public float RouteDistance => distance;
     public int HighestUnlocked => highest;
     public bool IsLevelLocked(int index) => index > highest || BucaLevelAvailability.IsManuallyLocked(index);
@@ -79,6 +80,7 @@ public sealed class TwilightRailwayMap : MonoBehaviour
     int navigationDirection;
     UnityEngine.EventSystems.EventSystem navigationEvents;
     bool previousNavigationEvents;
+    AnimalTrainCarriages passengers;
     const float NavigationDeadzoneSquared = .2f;
     const float NavigationFirstRepeat = .4f, NavigationRepeat = .22f;
 
@@ -102,28 +104,46 @@ public sealed class TwilightRailwayMap : MonoBehaviour
     }
     public void Open(Action goBack)
     {
+        PrepareOpen(goBack);
+        PlayInCurrentSession=null;RequireArrivalBeforePlay=false;
+        if(Application.isPlaying)AnimalTrainCollection.BeginJourney();
+        selected=destination=0;
+        parked=stops[0].distance>.01f ? -1 : 0;
+        distance=0;
+        Refresh();Pose();
+        if(Application.isPlaying)
+        {
+            passengers.Initialize();
+            passengers.ResetPassengers();
+        }
+        if(illustratedMenu!=null)illustratedMenu.BeginEntrance();
+    }
+    void PrepareOpen(Action goBack)
+    {
         GameScenePreloader.Prepare(gameScene);
         back=goBack;Cache();loading=false;moving=false;playWhenParked=false;
         if(menuLever!=null)menuLever.ResetLever();
         highest=ReadHighestUnlocked();
-        selected=parked=destination=Mathf.Clamp(PlayerPrefs.GetInt("BucaCurrentLevel",0),0,highest);
-        distance=stops[parked].distance;neutral=true;countdown=DepartureSeconds;pause=0;
+        neutral=true;countdown=DepartureSeconds;pause=0;
         navigationDirection=0;nextNav=0;
         if(Application.isPlaying)TakeNavigation();
-        journeyWhistle=false;Refresh();Pose();
-        if(illustratedMenu!=null)illustratedMenu.BeginEntrance();
+        journeyWhistle=false;
     }
     int ReadHighestUnlocked() => lockLevelsAfterFirstForTesting ? 0 :
         Mathf.Clamp(BucaLevelAvailability.HighestUnlocked,0,stops.Length-1);
     public void OpenAfterCompletion(int completed, int next, Action<int> play)
     {
-        PlayInCurrentSession=play;
-        RequireArrivalBeforePlay=true;
-        Open(() => SceneManager.LoadScene("MainMenu"));
+        PrepareOpen(() => SceneManager.LoadScene("MainMenu"));
+        PlayInCurrentSession=play;RequireArrivalBeforePlay=true;
         if(illustratedMenu!=null)illustratedMenu.ShowImmediately();
         selected=parked=destination=Mathf.Clamp(completed,0,stops.Length-1);
         distance=stops[parked].distance;
         Refresh();Pose();
+        if(Application.isPlaying)
+        {
+            passengers.Initialize();
+            passengers.BeginPendingBoarding();
+        }
         Select(next);
         // Allow the map entrance and newly collected carriage to appear before departure.
         pause=.8f;
@@ -210,7 +230,7 @@ public sealed class TwilightRailwayMap : MonoBehaviour
         if((menuLever==null || !menuLever.Returning) && (Input.GetKeyDown(KeyCode.Escape)||ArcadeInputAdapter.CancelDown())){RequestMenuReturn();return;}
         if(menuLever!=null && menuLever.TickReturn(Time.unscaledDeltaTime))return;
         TickTrain(Time.unscaledDeltaTime);
-        if(!moving&&parked==destination)countdown=Mathf.Max(0,countdown-Time.unscaledDeltaTime);
+        if(!Travelling)countdown=Mathf.Max(0,countdown-Time.unscaledDeltaTime);
         countdownLabel.text="START IN  "+Mathf.CeilToInt(countdown).ToString("00");
         if(countdown<=0){Select(Mathf.Min(selected,highest));RequestPlay();return;}
         if(!NavigateArcadeButtons())Navigate(stick,Time.unscaledTime);
@@ -226,7 +246,8 @@ public sealed class TwilightRailwayMap : MonoBehaviour
     public void RequestPlay()
     {
         if(IsLevelLocked(selected)||loading || (menuLever!=null && menuLever.Returning))return;
-        if(RequireArrivalBeforePlay&&Travelling){playWhenParked=true;return;}
+        if(EnteringTrack || (passengers!=null && passengers.Boarding) || (RequireArrivalBeforePlay&&Travelling))
+        {playWhenParked=true;return;}
         // An explicit Play press starts the selected level without waiting for train travel.
         playWhenParked=false;
         Load();
@@ -248,6 +269,11 @@ public sealed class TwilightRailwayMap : MonoBehaviour
     }
     public void TickTrain(float dt)
     {
+        if(passengers!=null && passengers.Boarding)
+        {
+            if(motionAudio!=null && motionAudio.isPlaying)motionAudio.Stop();
+            Pose();return;
+        }
         float volume=AudioManager.Instance!=null?AudioManager.Instance.masterVolume*AudioManager.Instance.sfxVolume:1;
         if(eventAudio!=null){eventAudio.volume=volume;if(AudioManager.Instance!=null)eventAudio.outputAudioMixerGroup=AudioManager.Instance.sfxGroup;}
         float previous=distance;
@@ -330,6 +356,7 @@ public sealed class TwilightRailwayMap : MonoBehaviour
         if(lengths==null)Cache();
         if(wheelLengths==null||wheelLengths.Length!=railway.Length||wheelProjectionDepth!=trainProjectionDepth)
             CacheWheelLengths();
+        if(d<0) return d*wheelLengths[1]/Mathf.Max(.001f,lengths[1]) /Mathf.Max(.001f,trainWheelTravelScale);
         d=Mathf.Clamp(d,0,lengths[lengths.Length-1]);
         int i=Array.BinarySearch(lengths,d);if(i<0)i=~i;i=Mathf.Clamp(i,1,lengths.Length-1);
         return Mathf.Lerp(wheelLengths[i-1],wheelLengths[i],Mathf.InverseLerp(lengths[i-1],lengths[i],d))
@@ -338,8 +365,11 @@ public sealed class TwilightRailwayMap : MonoBehaviour
     void Pose()
     {
         if(train==null)return;
-        if(Application.isPlaying && GetComponent<AnimalTrainCarriages>()==null)
-            gameObject.AddComponent<AnimalTrainCarriages>().map=this;
+        if(Application.isPlaying && passengers==null)
+        {
+            passengers=GetComponent<AnimalTrainCarriages>()??gameObject.AddComponent<AnimalTrainCarriages>();
+            passengers.map=this;
+        }
         float engineDistance=distance-trainNoseOffset;
         train.localPosition=Point(engineDistance);
         float halfSpan=Mathf.Max(.04f,trainHeadingSpan*.5f);

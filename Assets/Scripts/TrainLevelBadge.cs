@@ -13,7 +13,7 @@ public sealed class TrainLevelBadge : MonoBehaviour
         if(map==null||map.train==null||number==null)return;
         var position=map.train.localPosition;
         ((RectTransform)transform).anchoredPosition=new Vector2(position.x,position.z)*20+offset;
-        number.text=(map.Parked+1).ToString();
+        number.text=map.Parked>=0?(map.Parked+1).ToString():string.Empty;
     }
     void LateUpdate()=>Refresh();
 }
