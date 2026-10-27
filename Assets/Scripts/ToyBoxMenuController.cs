@@ -10,6 +10,9 @@ using Luxodd.Game.Scripts.Runtime.Viewport.Context;
 public sealed class ToyBoxMenuController : MonoBehaviour
 {
     public static bool OpenLevelsOnNextLoad;
+    public WorldStationRoute3D worldStation;
+    public TwilightRailwayMap twilightMap;
+    public MenuReturnTransition menuReturnTransition;
     [Serializable]
     public sealed class PuckButton
     {
@@ -69,10 +72,11 @@ public sealed class ToyBoxMenuController : MonoBehaviour
 
     void Start()
     {
+        GameScenePreloader.Prepare(gameScene);
         Time.timeScale = 1f;
         CaptureMenuLighting();
         _lastPointer = Input.mousePosition;
-        ShowPage(OpenLevelsOnNextLoad ? Page.Levels : Page.Home);
+        ShowPage(Page.Home); // Every launch begins at the main menu.
         OpenLevelsOnNextLoad = false;
         SetClock(30);
         FitCamera();
@@ -80,9 +84,11 @@ public sealed class ToyBoxMenuController : MonoBehaviour
 
     void Update()
     {
-        if (_loading) return;
+        if (_loading || (menuReturnTransition != null && menuReturnTransition.Busy)) return;
         FitCamera();
+        if (_page == Page.Levels && twilightMap != null) return;
         if (_page == Page.Skins && paintWorkshop != null) return;
+        if (_page == Page.Levels && worldStation != null && worldStation.Modal) return;
         if (_page == Page.Home)
         {
             _remaining -= Time.unscaledDeltaTime;
@@ -111,7 +117,9 @@ public sealed class ToyBoxMenuController : MonoBehaviour
         if (_awaitNeutral)
         {
             AnimateButtons();
-            if (!confirmHeld) _awaitNeutral = false;
+            if (!confirmHeld && ArcadeInputAdapter.GetStick().sqrMagnitude < .2f
+                && !Input.GetKey(KeyCode.LeftArrow) && !Input.GetKey(KeyCode.RightArrow)
+                && !Input.GetKey(KeyCode.UpArrow) && !Input.GetKey(KeyCode.DownArrow)) _awaitNeutral = false;
             return;
         }
 
@@ -162,6 +170,7 @@ public sealed class ToyBoxMenuController : MonoBehaviour
         Collider back=_page==Page.Levels?backButton.hit:_page==Page.Skins?skinsBackButton.hit:null;
         if(back!=null && back.Raycast(ray,out var backHit,150f) && backHit.distance<nearest)
             index=_page==Page.Levels?30:5;
+        if (_page == Page.Levels && worldStation != null && worldStation.gateHit.Raycast(ray,out var gateHit,150f) && gateHit.distance < nearest) index=31;
         if (index < 0) return false;
         SetFocus(index);
         if (click) Activate();
@@ -191,14 +200,12 @@ public sealed class ToyBoxMenuController : MonoBehaviour
             // Choose the nearest control in the requested screen direction.
             Vector2 direction = Mathf.Abs(stick.x) > Mathf.Abs(stick.y)
                 ? new Vector2(Mathf.Sign(stick.x),0) : new Vector2(0,Mathf.Sign(stick.y));
-            var originButton = _focus == 30 ? backButton : levelButtons[_focus];
-            Vector2 origin = mapCamera.WorldToViewportPoint(originButton.hit.bounds.center);
+            Vector2 origin = mapCamera.WorldToViewportPoint(MapHit(_focus).bounds.center);
             int best = _focus; float bestScore = float.MaxValue;
-            for (int i=0;i<=30;i++)
+            for (int i=0;i<=(worldStation!=null?31:30);i++)
             {
                 if(i==_focus) continue;
-                var candidate = i==30 ? backButton : levelButtons[i];
-                Vector2 delta = (Vector2)mapCamera.WorldToViewportPoint(candidate.hit.bounds.center)-origin;
+                Vector2 delta = (Vector2)mapCamera.WorldToViewportPoint(MapHit(i).bounds.center)-origin;
                 delta.x *= mapCamera.aspect;
                 float forward = Vector2.Dot(delta,direction);
                 if(forward<=.005f) continue;
@@ -216,6 +223,8 @@ public sealed class ToyBoxMenuController : MonoBehaviour
         }
     }
 
+    Collider MapHit(int index) => index==31 ? worldStation.gateHit : index==30 ? backButton.hit : levelButtons[index].hit;
+
     void SetFocus(int index)
     {
         _focus = index;
@@ -227,7 +236,11 @@ public sealed class ToyBoxMenuController : MonoBehaviour
     {
         var buttons = ActiveButtons;
         for (int i = 0; i < buttons.Length; i++) buttons[i].selectedRing.SetActive(i == _focus);
-        if (_page == Page.Levels) backButton.selectedRing.SetActive(_focus == 30);
+        if (_page == Page.Levels)
+        {
+            backButton.selectedRing.SetActive(_focus == 30);
+            if(worldStation!=null)worldStation.SetGateSelected(_focus==31);
+        }
         if (_page == Page.Skins) skinsBackButton.selectedRing.SetActive(_focus == 5);
     }
 
@@ -259,6 +272,7 @@ public sealed class ToyBoxMenuController : MonoBehaviour
         if (_page == Page.Levels)
         {
             if (_focus == 30) ShowPage(Page.Home);
+            else if (_focus == 31 && worldStation != null) worldStation.OpenFromMenu(StartLevel);
             else if (_focus <= _highest) StartLevel(_focus);
             return;
         }
@@ -268,7 +282,7 @@ public sealed class ToyBoxMenuController : MonoBehaviour
             else
             {
                 // Starting again preserves lessons already watched or skipped.
-                StartLevel(_focus == 1 ? Mathf.Clamp(PlayerPrefs.GetInt("BucaCurrentLevel", 0), 0, 29) : 0);
+                StartLevel(_focus == 1 ? BucaLevelAvailability.ClampPlayableIndex(PlayerPrefs.GetInt("BucaCurrentLevel", 0)) : 0);
             }
             return;
         }
@@ -285,11 +299,18 @@ public sealed class ToyBoxMenuController : MonoBehaviour
         CaptureMenuLighting();
         bool wasPreview = _page == Page.SkinPreview || _page == Page.Levels || (_page == Page.Skins && paintWorkshop != null);
         _page = page;
+        if (page == Page.Home) { _remaining = 30f; _lastSecond = -1; SetClock(30); }
         if (page == Page.Skins && paintWorkshop != null)
         {
             RenderSettings.ambientSkyColor = new Color(.60f,.66f,.74f);
             RenderSettings.ambientEquatorColor = new Color(.47f,.51f,.57f);
             RenderSettings.ambientGroundColor = new Color(.32f,.36f,.41f);
+        }
+        else if (page == Page.Levels && twilightMap != null)
+        {
+            RenderSettings.ambientSkyColor = new Color(.42f,.45f,.50f);
+            RenderSettings.ambientEquatorColor = new Color(.28f,.29f,.32f);
+            RenderSettings.ambientGroundColor = new Color(.16f,.17f,.20f);
         }
         else if (page == Page.Levels && mapPuckMaterial != null)
         {
@@ -316,18 +337,21 @@ public sealed class ToyBoxMenuController : MonoBehaviour
         if (page == Page.SkinPreview) RefreshPreview();
         homeRoot.SetActive(page == Page.Home);
         levelsRoot.SetActive(page == Page.Levels);
+        if(page==Page.Levels && twilightMap!=null) twilightMap.Open(() => ShowPage(Page.Home));
+        else if(page==Page.Levels && worldStation!=null)worldStation.ResetWorld();
         resumeRoot.SetActive(page == Page.Resume);
         if (skinsRoot != null) skinsRoot.SetActive(page == Page.Skins);
         if (page == Page.Skins && paintWorkshop != null) { paintWorkshop.Open(); return; }
         if (page == Page.Skins) RefreshEquipped();
-        if (page == Page.Levels)
+        if (page == Page.Levels && twilightMap == null)
         {
             RefreshProgress();
             _mapRemaining = mapSelectionSeconds;
             SetMapClock(Mathf.CeilToInt(_mapRemaining));
         }
-        RefreshSelection();
-        if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
+        if (page != Page.Levels || twilightMap == null) RefreshSelection();
+        if (AudioManager.Instance != null && (menuReturnTransition == null || !menuReturnTransition.Busy))
+            AudioManager.Instance.PlayButtonClick();
     }
 
     void RefreshPreview()
@@ -346,7 +370,8 @@ public sealed class ToyBoxMenuController : MonoBehaviour
 
     void RefreshProgress()
     {
-        _highest = Mathf.Clamp(PlayerPrefs.GetInt(LevelSelectController.HighestUnlockedKey, 0), 0, 29);
+        _highest = BucaLevelAvailability.HighestUnlocked;
+        if(worldStation!=null)worldStation.SetUnlocked(_highest>=30);
         for (int i = 0; i < levelButtons.Length; i++)
         {
             var button = levelButtons[i];
@@ -409,17 +434,19 @@ public sealed class ToyBoxMenuController : MonoBehaviour
 
     void StartLevel(int level)
     {
-        if (_loading) return;
+        if (_loading || level < 0 || level >= BucaLevelAvailability.PlayableLevelCount) return;
         _loading = true;
         PlayerPrefs.SetInt(LevelSelectController.PendingLevelKey, level);
         PlayerPrefs.Save();
         if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
-        SceneManager.LoadScene(gameScene);
+        GameScenePreloader.Open(gameScene);
     }
 
     public void FitMapCamera(float aspect)
     {
         if (mapCamera == null) return;
+        if(twilightMap!=null){twilightMap.Fit(aspect);return;}
+        if(worldStation!=null){worldStation.Fit(aspect);return;}
         Vector3 target = transform.TransformPoint(new Vector3(0,mapPuckMaterial != null ? 1.1f : .75f,-1.25f));
         float tan = Mathf.Tan(mapCamera.fieldOfView*Mathf.Deg2Rad*.5f), distance = 0;
         foreach(float x in new[]{-10.3f,10.3f})
@@ -453,8 +480,9 @@ public sealed class ToyBoxMenuController : MonoBehaviour
             safe.width / Screen.width, safe.height / Screen.height);
         if (mapCamera != null)
         {
-            mapCamera.rect = menuCamera.rect;
-            FitMapCamera(safe.width / safe.height);
+            bool illustrated = twilightMap != null && twilightMap.illustratedMenu != null;
+            mapCamera.rect = illustrated ? new Rect(0, 0, 1, 1) : menuCamera.rect;
+            FitMapCamera(illustrated ? Screen.width / (float)Screen.height : safe.width / safe.height);
         }
         if (previewCamera != null)
         {

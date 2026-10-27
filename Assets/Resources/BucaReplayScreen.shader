@@ -5,6 +5,8 @@ Shader "Buca/ReplayScreen"
         _MainTex ("Recorded shot", 2D) = "black" {}
         _Aspect ("Window aspect", Float) = 2.45
         _Radius ("Corner radius", Float) = .035
+        _Exposure ("Replay exposure", Float) = 1
+        _ToneMap ("Compress city highlights", Float) = 0
     }
     SubShader
     {
@@ -18,7 +20,7 @@ Shader "Buca/ReplayScreen"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             TEXTURE2D(_MainTex); SAMPLER(sampler_MainTex);
             CBUFFER_START(UnityPerMaterial)
-                float _Aspect, _Radius;
+                float _Aspect, _Radius, _Exposure, _ToneMap;
             CBUFFER_END
             struct Attributes { float4 positionOS:POSITION; float2 uv:TEXCOORD0; };
             struct Varyings { float4 positionCS:SV_POSITION; float2 uv:TEXCOORD0; };
@@ -32,7 +34,12 @@ Shader "Buca/ReplayScreen"
                 float2 q=abs(input.uv-.5)*float2(_Aspect,1)-(halfSize-_Radius);
                 float distance=length(max(q,0))+min(max(q.x,q.y),0)-_Radius;
                 clip(-distance);
-                return half4(SAMPLE_TEXTURE2D(_MainTex,sampler_MainTex,input.uv).rgb,1);
+                half3 color=max(0,SAMPLE_TEXTURE2D(_MainTex,sampler_MainTex,input.uv).rgb)*_Exposure;
+                // HDR capture retains surface detail instead of clipping the board
+                // and lamps to white. Compress only the city replay display.
+                half luminance=dot(color,half3(.2126,.7152,.0722));
+                half3 mapped=color/(1+luminance);
+                return half4(lerp(color,mapped,saturate(_ToneMap)),1);
             }
             ENDHLSL
         }

@@ -43,6 +43,8 @@ public partial class LevelManager : MonoBehaviour
 
     [Header("Game-complete panel (optional — shown after final level)")]
     public GameCompletePanel gameCompletePanel;
+    public WorldStationRoute3D worldStationJourney;
+    public AllAboardCompletion3D allAboardCompletion;
 
     [Header("Leaderboard panel (fallback for standalone — without LuxoddGameBridge)")]
     [Tooltip("If assigned, the leaderboard appears on death/time-up even when no LuxoddGameBridge is present. Auto-found at Start.")]
@@ -155,6 +157,10 @@ public partial class LevelManager : MonoBehaviour
 
     // Camera shake + smooth follow state
     Camera _mainCam;
+    public void SetGameplayCameraRestPose(Vector3 position, Quaternion rotation)
+    {
+        _camRestPos=position;_camRestRot=rotation;
+    }
     Vector3 _camRestPos;
     Quaternion _camRestRot;
     float _shakeAmount, _shakeTime;
@@ -249,7 +255,8 @@ public partial class LevelManager : MonoBehaviour
     float _fovOffset, _fovOffsetVel, _fovOffsetTarget;
 
     public int CurrentLevelIndex => _currentIndex;
-    public int TotalLevels => levelPrefabs != null ? levelPrefabs.Length : 0;
+    public int TotalLevels => levelPrefabs != null
+        ? Mathf.Min(levelPrefabs.Length, BucaLevelAvailability.PlayableLevelCount) : 0;
     public GameObject Puck => puck;
     public GameObject CurrentLevelRoot => _currentInstance;
     public int CurrentLevelNumber => _currentIndex + 1;
@@ -339,8 +346,7 @@ public partial class LevelManager : MonoBehaviour
 
         ApplyPremiumLevelTitleStyle();
 
-        // Respect the authored shot rule. Normal BUCA play disables hearts so
-        // extra low-power adjustment shots affect score/stars, not completion.
+        // Respect the authored shot rule and each level's starting heart allowance.
         UpdateLivesDisplay();
 
         if (_obstacleIntro == null)
@@ -348,6 +354,11 @@ public partial class LevelManager : MonoBehaviour
         if (holeInOneCelebration == null)
             Debug.LogError("[LevelManager] Missing prebuilt HoleInOneCelebration3D reference.", this);
     }
+
+    public WorldTwoHarborReveal worldTwoHarborRevealPrefab;
+    public GrandTrainWelcome grandTrainWelcomePrefab;
+    public HarborWhaleEncounter harborWhalePrefab;
+    public RabbitGiftReward rabbitGiftRewardPrefab;
 
     void Start()
     {
@@ -377,7 +388,7 @@ public partial class LevelManager : MonoBehaviour
         {
             startIdx = PlayerPrefs.GetInt(PrefKey, 0);
         }
-        _currentIndex = Mathf.Clamp(startIdx, 0, levelPrefabs.Length - 1);
+        _currentIndex = Mathf.Clamp(startIdx, 0, TotalLevels - 1);
 
         _mainCam = Camera.main;
         if (_mainCam != null)
@@ -448,7 +459,7 @@ public partial class LevelManager : MonoBehaviour
     // valuable without blocking players who need extra low-power adjustments.
     void OnMissedShot()
     {
-        if (bestShotReplay != null) bestShotReplay.CancelRecording();
+        if (bestShotReplay != null) bestShotReplay.CommitAttempt(_shotCount);
         if (_levelFailed || _isTransitioning) return;
 
         if (!useShotLives)
@@ -593,7 +604,7 @@ public partial class LevelManager : MonoBehaviour
     IEnumerator ShowTerminalLeaderboardAndOfferContinue(string reason)
     {
         int visibleScore = Mathf.Max(_campaignTotalScore, _displayedScore);
-        if (bestShotReplay != null && bestShotReplay.TryShow(_mainCam, null))
+        if (bestShotReplay != null && bestShotReplay.TryShow(_mainCam, null, CurrentLevelNumber))
             while (bestShotReplay.IsShowing) yield return null;
         bool leaderboardFinished = false;
         if (luxoddBridge != null)
@@ -871,6 +882,8 @@ public partial class LevelManager : MonoBehaviour
     /// </summary>
     IEnumerator TimeUpSequence()
     {
+        // Finish the real flight before freezing the puck or showing loss effects.
+        if (bestShotReplay != null) bestShotReplay.CommitAttempt(_shotCount);
         _isTransitioning = true;
         _timerActive = false;
         HideGameplayHudForResult();
@@ -1089,12 +1102,17 @@ public partial class LevelManager : MonoBehaviour
     /// </summary>
     void LoadLevelInternal(int index, bool resetTimer, bool notifyLuxodd, float preservedTime)
     {
+        // Validate before changing the active board or its undo/celebration state.
+        if (index < 0 || index >= TotalLevels) return;
+        if (BucaLevelAvailability.IsManuallyLocked(index))
+        {
+            UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
+            return;
+        }
         if(heartRewardPresentation!=null) heartRewardPresentation.Clear();
         CancelShotRewind();
         _undoShots.Clear();
         if (comboSign != null) comboSign.Hide();
-        if (index < 0) return;
-        if (levelPrefabs == null || index >= levelPrefabs.Length) return;
 
         if (_currentInstance != null)
         {
@@ -1105,6 +1123,7 @@ public partial class LevelManager : MonoBehaviour
             Destroy(_currentInstance);
         }
         _currentIndex = index;
+        if (bestShotReplay != null) bestShotReplay.BeginLevel(index + 1);
 
         _currentInstance = Instantiate(levelPrefabs[index]);
         _currentInstance.name = levelPrefabs[index].name;
@@ -1390,7 +1409,7 @@ public partial class LevelManager : MonoBehaviour
         // BucaHighestLevel = highest playable level index. Levels above it stay
         // locked in the picker. Monotonic — only ever increases.
         const string highestKey = "BucaHighestLevel";
-        int newUnlock = Mathf.Min(_currentIndex + 1, levelPrefabs.Length - 1);
+        int newUnlock = Mathf.Min(_currentIndex + 1, TotalLevels - 1);
         if (newUnlock > PlayerPrefs.GetInt(highestKey, 0))
             PlayerPrefs.SetInt(highestKey, newUnlock);
 
@@ -1402,7 +1421,8 @@ public partial class LevelManager : MonoBehaviour
         if (luxoddBridge != null)
         {
             bool isFinalLevel = levelPrefabs != null
-                && _currentIndex == levelPrefabs.Length - 1;
+                && (_currentIndex == TotalLevels - 1
+                    || (_currentIndex == 29 && (grandTrainWelcomePrefab != null || worldTwoHarborRevealPrefab != null || allAboardCompletion != null || worldStationJourney != null)));
             bool platformRestartWillFinalize = isFinalLevel
                 && ((BucaInGameTransactionController.Instance != null
                      && BucaInGameTransactionController.Instance.PlatformTransactionsExpected)
@@ -1476,8 +1496,96 @@ public partial class LevelManager : MonoBehaviour
 
         // Advance level
         int next = _currentIndex + 1;
-        bool finishedCampaign = next >= levelPrefabs.Length;
-        int campaignMaxLevels = levelPrefabs.Length;
+        bool finishedCampaign = next >= TotalLevels;
+        int campaignMaxLevels = TotalLevels;
+
+        if(HarborWhaleEncounter.IsWhaleLevel(_currentIndex) && harborWhalePrefab!=null)
+        {
+            var whale=Instantiate(harborWhalePrefab);
+            yield return whale.Play(_currentIndex+1);
+            Destroy(whale.gameObject);
+        }
+
+        // Keep the completed score and current run while the level-five friend says hello.
+        var animalCollection = AnimalTrainCollection.Load();
+        if (animalCollection != null && _currentIndex < 29)
+            yield return animalCollection.RewardLevel(_currentIndex + 1);
+        else if (_currentIndex == 4 && rabbitGiftRewardPrefab != null)
+        {
+            var gift = Instantiate(rabbitGiftRewardPrefab);
+            yield return gift.Play();
+            Destroy(gift.gameObject);
+        }
+
+        // Keep the current run and Luxodd session while the train opens the bonus map.
+        if (!finishedCampaign && _currentIndex == 29 && grandTrainWelcomePrefab != null)
+        {
+            var welcome = Instantiate(grandTrainWelcomePrefab);
+            welcome.automaticJourney=worldTwoHarborRevealPrefab!=null;
+            yield return welcome.Play();
+            Destroy(welcome.gameObject);
+            if(worldTwoHarborRevealPrefab!=null)
+            {
+                var journey=Instantiate(worldTwoHarborRevealPrefab);
+                yield return journey.Play();
+                Destroy(journey.gameObject);
+            }
+            if (luxoddBridge != null && luxoddBridge.PlatformTransactionsExpected)
+                luxoddBridge.OnLevelEnd(_currentIndex, score.total);
+            yield return DoLevelTransition(next, false);
+            yield break;
+        }
+
+        if (!finishedCampaign && _currentIndex == 29 && worldTwoHarborRevealPrefab != null)
+        {
+            var reveal=Instantiate(worldTwoHarborRevealPrefab);
+            yield return reveal.Play();
+            Destroy(reveal.gameObject);
+            if(luxoddBridge!=null&&luxoddBridge.PlatformTransactionsExpected)
+                luxoddBridge.OnLevelEnd(_currentIndex,score.total);
+            yield return DoLevelTransition(next, false);
+            yield break;
+        }
+        if (!finishedCampaign && _currentIndex == 29 && worldStationJourney != null)
+        {
+            int selectedBonus = -1;
+            worldStationJourney.ShowJourney(index => selectedBonus = index);
+            while (selectedBonus < 0) yield return null;
+            if (luxoddBridge != null && luxoddBridge.PlatformTransactionsExpected)
+                luxoddBridge.OnLevelEnd(_currentIndex, score.total);
+            yield return DoLevelTransition(selectedBonus);
+            yield break;
+        }
+
+        // The first course ends at 30; the station opens the separately authored bonus course.
+        if (allAboardCompletion != null && (_currentIndex == 29 || finishedCampaign))
+        {
+            bool continueJourney = false;
+            allAboardCompletion.Show(_campaignTotalScore, () => continueJourney = true, () =>
+            {
+                if (luxoddBridge != null && luxoddBridge.PlatformTransactionsExpected)
+                    luxoddBridge.EndCurrentSession(_currentIndex, _campaignTotalScore);
+                else UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
+            }, bonusComplete: _currentIndex >= 30, campaignComplete: finishedCampaign);
+            while (!continueJourney) yield return null;
+            if (!finishedCampaign)
+            {
+                // Level 30 was deferred while the player chose bonus boards or End.
+                if (luxoddBridge != null && luxoddBridge.PlatformTransactionsExpected)
+                    luxoddBridge.OnLevelEnd(_currentIndex, score.total);
+                yield return DoLevelTransition(next);
+                yield break;
+            }
+            // Local replay preserves earned stars and unlocked levels.
+            bool platform = (luxoddBridge != null && luxoddBridge.PlatformTransactionsExpected)
+                || (BucaInGameTransactionController.Instance != null
+                    && BucaInGameTransactionController.Instance.PlatformTransactionsExpected);
+            if (!platform)
+            {
+                yield return DoLevelTransition(0);
+                yield break;
+            }
+        }
 
         if (finishedCampaign)
         {
@@ -1487,7 +1595,7 @@ public partial class LevelManager : MonoBehaviour
             if (transactions != null && transactions.PlatformTransactionsExpected
                 && transactions.IsReady)
             {
-                if (gameCompletePanel != null)
+                if (gameCompletePanel != null && allAboardCompletion == null)
                 {
                     gameCompletePanel.Show(_campaignTotalStrokes, _campaignTotalPar,
                         _campaignTotalStars, campaignMaxLevels * 3);
@@ -1508,7 +1616,7 @@ public partial class LevelManager : MonoBehaviour
             // enabled Restart transaction never appears.
             if (luxoddBridge != null && luxoddBridge.PlatformTransactionsExpected)
             {
-                if (gameCompletePanel != null)
+                if (gameCompletePanel != null && allAboardCompletion == null)
                 {
                     gameCompletePanel.Show(_campaignTotalStrokes, _campaignTotalPar, _campaignTotalStars,
                         campaignMaxLevels * 3);
@@ -1526,7 +1634,7 @@ public partial class LevelManager : MonoBehaviour
             {
                 next = 0;
             }
-            else if (gameCompletePanel != null)
+            else if (gameCompletePanel != null && allAboardCompletion == null)
             {
                 // Luxodd: report campaign completion + trigger Restart popup.
                 // _campaignTotalScore here ALREADY includes this level's score
@@ -1567,12 +1675,14 @@ public partial class LevelManager : MonoBehaviour
     /// Shared level-swap animation: loads the next authored board material
     /// immediately, then grows the puck back in.
     /// </summary>
-    IEnumerator DoLevelTransition(int nextIndex)
+    IEnumerator DoLevelTransition(int nextIndex, bool showMapJourney = true)
     {
+        if(showMapJourney)
+            yield return LevelMapJourney.Play(_currentIndex,nextIndex,index=>nextIndex=index);
         // Standalone loop mode starts a genuinely new course. Clear the prior
         // run only after its final result screen has finished displaying.
         if (nextIndex == 0 && levelPrefabs != null
-            && _currentIndex == levelPrefabs.Length - 1)
+            && _currentIndex == TotalLevels - 1)
             ResetCampaignScorecard();
 
         RestoreGameplayHudAfterResult();
@@ -1598,7 +1708,7 @@ public partial class LevelManager : MonoBehaviour
     public void GoToPrevious()
     {
         int prev = _currentIndex - 1;
-        if (prev < 0) prev = levelPrefabs.Length - 1;
+        if (prev < 0) prev = TotalLevels - 1;
         LoadLevel(prev);
     }
 
@@ -1656,7 +1766,7 @@ public partial class LevelManager : MonoBehaviour
 
     IEnumerator DeathSequence()
     {
-        if (bestShotReplay != null) bestShotReplay.CancelRecording();
+        if (bestShotReplay != null) bestShotReplay.CommitAttempt(_shotCount);
         _isTransitioning = true;
         float deathStartedAt = Time.unscaledTime;
 
@@ -1931,7 +2041,7 @@ public partial class LevelManager : MonoBehaviour
     float GetTimeLimitForLevel(int index)
     {
         // Every campaign level uses its authored learning/challenge budget.
-        if(index>=0 && index<30 && levelSettings!=null && index<levelSettings.Length && levelSettings[index]!=null)
+        if(index>=0 && levelSettings!=null && index<levelSettings.Length && levelSettings[index]!=null)
             return Mathf.Max(1f,levelSettings[index].timeLimit);
         return 30f;
     }
@@ -1941,7 +2051,7 @@ public partial class LevelManager : MonoBehaviour
     {
         if(index>=0 && levelSettings!=null && index<levelSettings.Length && levelSettings[index]!=null)
             return Mathf.Max(1,levelSettings[index].maxLives);
-        return index>=0 && index<30 ? Mathf.Max(5,index+1) : Mathf.Max(1,maxLives);
+        return index>=0 && index<50 ? (index<10 ? 5 : index<20 ? 4 : 3) : Mathf.Max(1,maxLives);
     }
 
     /// <summary>

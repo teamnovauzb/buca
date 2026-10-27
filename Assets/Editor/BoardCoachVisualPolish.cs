@@ -27,6 +27,8 @@ public static class BoardCoachVisualPolish
                 display.TryAddCharacters("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ,.—:>/");
                 EditorUtility.SetDirty(display);AssetDatabase.SaveAssets();
             }
+            ArcadeFontClarity.Configure(display);
+            AssetDatabase.SaveAssetIfDirty(display.material);
             var view=root.GetComponent<BoardCoachTutorial>();
             foreach(var text in root.GetComponentsInChildren<TMP_Text>(true))
             {

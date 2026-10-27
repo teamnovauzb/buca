@@ -115,7 +115,7 @@ public class AudioManager : MonoBehaviour
     [Header("Volumes (0..1)")]
     [Range(0f, 1f)] public float masterVolume = 1f;
     [Range(0f, 1f)] public float musicVolume = 0.42f;
-    [Range(0f, 1f)] public float sfxVolume   = 1f;
+    [Range(0f, 1f)] public float sfxVolume   = 0.4f;
     [Range(0f, 1f)] public float ambientVolume = 0.6f;
 
     [Header("Tuning")]
@@ -420,6 +420,12 @@ public class AudioManager : MonoBehaviour
     // Scene-based music auto-switch
     // ═══════════════════════════════════════════════════════════
     void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (GameScenePreloader.IsPreparing(scene)) return;
+        ActivatePreparedScene(scene);
+    }
+
+    public void ActivatePreparedScene(Scene scene)
     {
         _initialSceneHandled = true;
         _tenseModeActive = false;

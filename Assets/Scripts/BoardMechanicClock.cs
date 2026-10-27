@@ -5,7 +5,28 @@ public static class BoardMechanicClock
 {
     static bool paused;
     static float pausedAt, pausedDuration;
-    public static float Time => (paused ? pausedAt : UnityEngine.Time.time) - pausedDuration;
+    static bool playback;
+    static float playbackStart, playbackTime;
+    public static float Time => playback ? playbackStart + playbackTime : (paused ? pausedAt : UnityEngine.Time.time) - pausedDuration;
+
+    public static void BeginPlayback()
+    {
+        playbackStart = Time;
+        playbackTime = 0;
+        playback = true;
+    }
+    public static void SetPlaybackTime(float seconds)
+    {
+        if (playback) playbackTime = Mathf.Max(0, seconds);
+    }
+    public static void EndPlayback()
+    {
+        if (!playback) return;
+        float end = Time;
+        playback = false;
+        paused = false;
+        pausedDuration = UnityEngine.Time.time - end;
+    }
 
     public static void SetPaused(bool value)
     {
@@ -16,5 +37,5 @@ public static class BoardMechanicClock
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    static void Reset(){paused=false;pausedAt=pausedDuration=0;}
+    static void Reset(){paused=playback=false;pausedAt=pausedDuration=playbackStart=playbackTime=0;}
 }

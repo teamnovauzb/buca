@@ -40,6 +40,7 @@ public sealed partial class ToyBoxResults3D
     public void SampleCelebration(float seconds)
     {
         if(resultsCamera==null || presentation==null)return;
+        bool cityCelebration=ShowingWellDone && wellDone==worldTwoWellDone;
         var camera=resultsCamera;
         float depth=Vector3.Dot(presentation.transform.position-camera.transform.position,camera.transform.forward)+1.8f;
         float height=camera.orthographic?camera.orthographicSize*2:2*depth*Mathf.Tan(camera.fieldOfView*.5f*Mathf.Deg2Rad);
@@ -55,7 +56,7 @@ public sealed partial class ToyBoxResults3D
             float delay=shower?.65f+seed*1.15f:.05f+(i%20)*.038f;
             float t=seconds-delay;
             float life=shower?3.45f:3.1f;
-            bool visible=t>=0 && t<life && !ScorecardShowing && !ShowingWellDone && (fullCelebration || i%2==0);
+            bool visible=t>=0 && t<life && !ScorecardShowing && (!ShowingWellDone || cityCelebration) && (fullCelebration || cityCelebration || i%2==0);
             piece.gameObject.SetActive(visible);if(!visible)continue;
             float x,y;
             if(shower)
@@ -80,7 +81,8 @@ public sealed partial class ToyBoxResults3D
             var ray=celebrationRays[i];if(ray==null)continue;
             int side=i/40, spoke=i%40;
             float t=seconds-(side==0?.32f:.64f);
-            bool visible=fullCelebration && !ScorecardShowing && t>=0 && t<1.25f;
+            if(cityCelebration && t>=0 && seconds<5.8f)t=Mathf.Repeat(t,1.55f);
+            bool visible=(fullCelebration || cityCelebration) && !ScorecardShowing && t>=0 && t<1.25f;
             ray.gameObject.SetActive(visible);if(!visible)continue;
             float angle=(spoke*9f+side*4.5f)*Mathf.Deg2Rad;
             float variation=.38f+Fraction(spoke*.618f)*.62f;
@@ -91,7 +93,7 @@ public sealed partial class ToyBoxResults3D
             ray.rotation=facing*Quaternion.Euler(0,0,angle*Mathf.Rad2Deg);
             float fade=Mathf.Pow(Mathf.Clamp01((1.25f-t)/1.25f),1.2f);
             float length=spoke%7==0?.006f:.028f+.085f*variation;
-            ray.localScale=new Vector3(height*length*fade,height*.004f*fade,1);
+            ray.localScale=new Vector3(height*length*fade,height*(cityCelebration?.0055f:.004f)*fade,1);
         }
     }
     static float Fraction(float value) => value-Mathf.Floor(value);

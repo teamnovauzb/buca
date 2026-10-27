@@ -36,7 +36,7 @@ public static class BestShotReplayPreview
         finally{EditorSceneManager.OpenScene(restore);}
     }
     // Editorial preview only. Runtime always records the player's physics motion.
-    public static void BuildPreviewRecording(BestShotReplay view,GameObject board,GameObject puck,Camera source)
+    public static void BuildPreviewRecording(BestShotReplay view,GameObject board,GameObject puck,Camera source,int levelNumber=2)
     {
         var start=board.transform.Find("PuckStart");var hole=board.transform.Find("Hole");
         Vector3 from=start!=null?start.position:new Vector3(0,.22f,-5);
@@ -44,7 +44,7 @@ public static class BestShotReplayPreview
         from.y=to.y=.22f;
         puck.SetActive(true);puck.transform.position=from;puck.transform.localScale=Vector3.one*.46f;
         var scale=puck.transform.localScale;
-        view.BeginShot(board,puck,1,source.transform.position,source.transform.rotation,source.fieldOfView);
+        view.BeginShot(board,puck,levelNumber,source.transform.position,source.transform.rotation,source.fieldOfView);
         var capture=typeof(BestShotReplay).GetMethod("CaptureFrame",BindingFlags.NonPublic|BindingFlags.Instance);
         for(int i=1;i<=120;i++)
         {

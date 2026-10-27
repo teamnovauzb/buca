@@ -185,12 +185,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ecb669e9594e44aad80fff25de3f5283, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelDifficultyProfile
-  balanceVersion: 5
+  balanceVersion: 6
   levelNumber: 16
   chapter: 3
   difficultyRating: 3
   difficultyIndex: 16
-  mechanicHint: Practice timing and conveyor correction through paired gaps.
+  mechanicHint: A quicker gate follows the tighter second iris.
 --- !u!114 &2074651600953351302
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -505,7 +505,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MovingWall
   axis: {x: 1, y: 0, z: 0}
   distance: 2.2
-  cycleSeconds: 6.077778
+  cycleSeconds: 4.65
   phase: 0
 --- !u!114 &1861452578547775497
 MonoBehaviour:
@@ -1206,7 +1206,7 @@ Transform:
   m_GameObject: {fileID: 873724427913955795}
   serializedVersion: 2
   m_LocalRotation: {x: 0.4055798, y: 0.4055798, z: 0.579228, w: 0.579228}
-  m_LocalPosition: {x: -1.7, y: 0.22, z: 0.3}
+  m_LocalPosition: {x: -1.4, y: 0.22, z: 0.3}
   m_LocalScale: {x: 0.24, y: 1.1, z: 0.24}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -7276,7 +7276,7 @@ Transform:
   m_GameObject: {fileID: 6645697392282570913}
   serializedVersion: 2
   m_LocalRotation: {x: -0.4055798, y: -0.4055798, z: 0.579228, w: 0.579228}
-  m_LocalPosition: {x: 1.7, y: 0.22, z: 0.3}
+  m_LocalPosition: {x: 1.4, y: 0.22, z: 0.3}
   m_LocalScale: {x: 0.24, y: 1.1, z: 0.24}
   m_ConstrainProportionsScale: 0
   m_Children:

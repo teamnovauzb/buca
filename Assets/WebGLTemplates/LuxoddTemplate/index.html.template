@@ -34,13 +34,12 @@
     canvas.style.width = cssW + "px";
     canvas.style.height = cssH + "px";
 
-    // Keep full-screen CSS/input coordinates, but avoid Retina/4K GPU cost.
-    // Rotate the 1080p budget with the viewport; never upscale above native DPR.
-    const longSide = Math.max(cssW, cssH);
-    const shortSide = Math.min(cssW, cssH);
-    const dpr = Math.min(window.devicePixelRatio || 1, 1920 / longSide, 1080 / shortSide);
-    const pxW = Math.max(1, Math.floor(cssW * dpr));
-    const pxH = Math.max(1, Math.floor(cssH * dpr));
+    // Render at the display's physical resolution. A 1080p cap stretches the
+    // whole game (including text) on high-DPI and larger arcade displays.
+    // CSS dimensions remain unchanged so pointer and safe-area coordinates fit.
+    const dpr = window.devicePixelRatio || 1;
+    const pxW = Math.max(1, Math.round(cssW * dpr));
+    const pxH = Math.max(1, Math.round(cssH * dpr));
 
     if (canvas.width !== pxW) canvas.width = pxW;
     if (canvas.height !== pxH) canvas.height = pxH;
@@ -54,6 +53,18 @@
 
     window.addEventListener("resize", apply);
     window.addEventListener("orientationchange", apply);
+    document.addEventListener("fullscreenchange", apply);
+
+    // Moving the arcade browser between displays can change DPR without a
+    // viewport resize. Re-arm the query after each display-scale change.
+    function watchPixelRatio() {
+      const query = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      query.addEventListener("change", () => {
+        apply();
+        watchPixelRatio();
+      }, { once: true });
+    }
+    watchPixelRatio();
 
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", apply);

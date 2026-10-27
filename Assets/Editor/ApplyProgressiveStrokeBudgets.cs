@@ -22,11 +22,9 @@ public static class ApplyProgressiveStrokeBudgets
 
     static readonly int[] StrokeBudgets =
     {
-        6, 6, 6, 6, 6, 6,
-        5, 5, 5, 5, 5, 5,
-        5, 5, 5, 5, 5, 5,
-        4, 4, 4, 4, 4, 4,
-        3, 3, 3, 3, 3, 3
+        5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+        4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+        3, 3, 3, 3, 3, 3, 3, 3, 3, 3
     };
 
     [MenuItem("RealBuca/Apply Progressive Stroke Budgets")]

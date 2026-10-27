@@ -21,6 +21,7 @@ public static class ArcadeResultValidation
         foreach(var component in UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include,FindObjectsSortMode.None))component.enabled=false;
         UnityEngine.Object.FindAnyObjectByType<LeaderboardPanel>(FindObjectsInactive.Include).enabled=true;
         UnityEngine.Object.FindAnyObjectByType<BucaArcadeResult3D>(FindObjectsInactive.Include).enabled=true;
+        UnityEngine.Object.FindAnyObjectByType<BucaResultStandings>(FindObjectsInactive.Include).enabled=true;
         UnityEngine.Object.FindAnyObjectByType<AudioManager>(FindObjectsInactive.Include).enabled=true;
         foreach(var camera in UnityEngine.Object.FindObjectsByType<Camera>(FindObjectsInactive.Include,FindObjectsSortMode.None))camera.enabled=false;
         SessionState.SetBool(Key,true);SessionState.SetString(Key+"Result","running");phase=0;callbacks=0;EditorApplication.EnterPlaymode();
@@ -40,6 +41,7 @@ public static class ArcadeResultValidation
             if(phase==0)
             {
                 panel=UnityEngine.Object.FindAnyObjectByType<LeaderboardPanel>(FindObjectsInactive.Include);view=panel.GetComponent<BucaArcadeResult3D>();
+                if(view.worldTheme!=null)typeof(LevelManager).GetField("_currentIndex",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(view.worldTheme.levelManager,30);
                 Check(view.finalChime!=null && AudioManager.Instance.scoreCountTickSfx!=null,"Missing audio assets");
                 panel.Show(null,0,932,"YOU","OUT OF HEARTS",()=>callbacks++);panel.ChooseRetry();
                 began=Time.unscaledTime;phase=1;
@@ -47,6 +49,7 @@ public static class ArcadeResultValidation
             else if(phase==1 && Time.unscaledTime-began>1.3f)
             {
                 Check(callbacks==0,"Early input skipped count");Check(view.stage.activeSelf,"Cabinet invisible");
+                if(view.worldTheme!=null)Check(view.worldTheme.IsCity&&view.worldTheme.cityBackdrop.gameObject.activeSelf&&view.worldTheme.blurredLevel.IsCreated(),"World 2 theme or city backdrop missing");
                 Check(view.DisplayedScore>0 && view.DisplayedScore<932,"Count not animated: displayed="+view.DisplayedScore+" target="+panel.PlayerScore+" elapsed="+(Time.unscaledTime-began));
                 Check(Vector3.Distance(view.cabinet.localPosition,new Vector3(-4.7f,0,0))<.01f,"Entrance did not settle");
                 panel.RefreshEntries(panel.PresentationId,null,0,932,"YOU");phase=2;
@@ -61,11 +64,13 @@ public static class ArcadeResultValidation
             else if(phase==3 && Time.unscaledTime-began>8.3f)
             {
                 Check(callbacks==1,"Handoff not called exactly once");
+                if(view.worldTheme!=null)typeof(LevelManager).GetField("_currentIndex",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(view.worldTheme.levelManager,29);
                 panel.Show(null,0,932,"YOU","TIME UP",()=>callbacks++);phase=4;began=Time.unscaledTime;
             }
             else if(phase==4 && Time.unscaledTime-began>1.3f)
             {
                 Check(view.timeHeading.activeSelf&&!view.heartsHeading.activeSelf,"Time-up reason missing");
+                if(view.worldTheme!=null)Check(!view.worldTheme.IsCity&&!view.worldTheme.cityBackdrop.gameObject.activeSelf,"World 1 theme not restored");
                 Check(view.ShowingLeaderboard,"Repeat started in wrong phase");phase=5;
             }
             else if(phase==5 && Time.unscaledTime-began>4.3f)
@@ -75,7 +80,7 @@ public static class ArcadeResultValidation
             else if(phase==6 && Time.unscaledTime-began>8.3f)
             {
                 Check(callbacks==2,"Time-up handoff incorrect");
-                SessionState.SetString(Key+"Result","PASS: both death reasons, 8-second combined result and leaderboard, buttons removed, one handoff each, frozen gameplay time.");
+                SessionState.SetString(Key+"Result","PASS: World 2 Midnight Brass and city capture; World 1 theme restored; both death reasons; score count; 8-second result; one handoff each; frozen gameplay time.");
                 Time.timeScale=1;EditorApplication.ExitPlaymode();phase=7;
             }
         }

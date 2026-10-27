@@ -47,8 +47,8 @@ public sealed class ToyBoxGameplayHud : MonoBehaviour
     public Transform shootCap;
     public GameObject shootHighlight;
     Vector3 shootRest;
-    // Pull back to aim forward. Menu navigation keeps its normal direction.
-    public static Vector2 MapGameplayStick(Vector2 stick) => new Vector2(stick.x, -stick.y);
+    // Keep gameplay input aligned with the physical stick: up stays up.
+    public static Vector2 MapGameplayStick(Vector2 stick) => stick;
     public Transform joystickPivot, joystickDirectionDot;
     public GameObject unlimitedShotsLabel, limitedLivesLabel;
     public MeshFilter[] livesLeftDigits, livesTotalDigits;
@@ -99,7 +99,7 @@ public sealed class ToyBoxGameplayHud : MonoBehaviour
     // Convert screen-space input into the authored model's local ground plane.
     Vector2 ReadJoystickVisualInput()
     {
-        // The handle follows the hand; only PuckController reverses shot aiming.
+        // The handle and gameplay aiming use the same vertical direction.
         Vector2 stick=PanelStick.sqrMagnitude>.001f?PanelStick:ArcadeInputAdapter.GetStick();
         var camera=Camera.main;
         if(camera==null) return stick;
@@ -151,10 +151,10 @@ public sealed class ToyBoxGameplayHud : MonoBehaviour
         value=Mathf.Max(0,value);
         int visible=1,remaining=value;
         while(remaining>=10 && visible<places.Length) { remaining/=10; visible++; }
-        if(padded) visible=places.Length;
+        if(padded) visible=Mathf.Max(Mathf.Min(2,places.Length),visible);
         for(int i=places.Length-1;i>=0;i--)
         {
-            places[i].gameObject.SetActive(padded || value>0 || i==places.Length-1);
+            places[i].gameObject.SetActive(i>=places.Length-visible);
             places[i].transform.localPosition=Vector3.right*((i-(places.Length-visible)-(visible-1)*.5f)*places[i].transform.localScale.x*.85f);
             var mesh=digitMeshes[value%10]; value/=10;
             if(places[i].sharedMesh!=mesh) places[i].sharedMesh=mesh;

@@ -70,8 +70,8 @@ public partial class LevelManager
     public void UndoLastShot()
     {
         if(!CanUndoShot) return;
-        if(bestShotReplay!=null)bestShotReplay.CancelRecording();
         var state=_undoShots.Pop();
+        if(bestShotReplay!=null)bestShotReplay.DiscardShotsAfter(state.shots);
         _recordingShot=null;
         state.path.Add(new Pose(puck.transform.position,puck.transform.rotation));
         _rewindRoutine=StartCoroutine(RewindShot(state));

@@ -9,6 +9,7 @@ public sealed class ToyBoxWellDone3D : MonoBehaviour
     public Mesh[] digitMeshes;
     public ToyBoxPodiumLabel shotsLabel;
     public Transform[] confetti;
+    public bool richConfetti;
     public Vector3 bannerRest, scoreRest, buttonRest, capRest;
 
     public void Prepare(int shots)
@@ -51,13 +52,15 @@ public sealed class ToyBoxWellDone3D : MonoBehaviour
         for(int i=0;i<confetti.Length;i++)
         {
             float t=seconds-.18f-(i%6)*.065f;
-            var piece=confetti[i];bool visible=t>=0 && t<2.8f;
+            if(richConfetti)t=seconds-.12f-(i%24)*.055f;
+            float life=richConfetti?5.2f:2.8f;
+            var piece=confetti[i];bool visible=t>=0 && t<life;
             piece.gameObject.SetActive(visible);if(!visible)continue;
             float seed=Mathf.Repeat(i*.618f+.2f,1),spread=Mathf.Repeat(i*.382f+.1f,1);
             float side=i%2==0?-1:1;
             piece.localPosition=new Vector3(side*(3.15f+seed*2.35f+.16f*t),-2.3f+spread*5.5f+.75f*t-.28f*t*t,.5f);
             piece.localRotation=Quaternion.Euler(90+t*90,i*37+t*95,i*51+t*75);
-            piece.localScale=Vector3.one*(.13f+seed*.075f)*Mathf.Clamp01(t/.18f)*Mathf.Clamp01((2.8f-t)/.6f);
+            piece.localScale=Vector3.one*(richConfetti?.20f+seed*.15f:.13f+seed*.075f)*Mathf.Clamp01(t/.18f)*Mathf.Clamp01((life-t)/.6f);
         }
     }
     public void StopConfetti() { foreach(var piece in confetti)piece.gameObject.SetActive(false); }

@@ -379,8 +379,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6eb157fc9db48404fb9aba74dcd67224, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RotatingWall
-  speedDegPerSec: -27.09091
-  phaseDeg: 0
+  speedDegPerSec: -44
+  phaseDeg: 45
 --- !u!114 &5535416446389823443
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -555,7 +555,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6eb157fc9db48404fb9aba74dcd67224, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RotatingWall
-  speedDegPerSec: 27.09091
+  speedDegPerSec: 40
   phaseDeg: 0
 --- !u!114 &5254134984127890592
 MonoBehaviour:
@@ -651,7 +651,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OrbitingHole
   radius: 0.4136364
-  cycleSeconds: 8.863636
+  cycleSeconds: 6.6
   phase: 1.5
 --- !u!1 &2362207905562305607
 GameObject:
@@ -2061,12 +2061,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ecb669e9594e44aad80fff25de3f5283, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelDifficultyProfile
-  balanceVersion: 5
+  balanceVersion: 6
   levelNumber: 18
   chapter: 3
   difficultyRating: 3
   difficultyIndex: 18
-  mechanicHint: Time two counter-rotating walls, one after the other.
+  mechanicHint: Counter-rotating walls have different speeds and starting angles.
 --- !u!1 &8195950696584253473
 GameObject:
   m_ObjectHideFlags: 0

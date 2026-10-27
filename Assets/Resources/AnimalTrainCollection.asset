@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8caf24e8012594634ab7f3ab5d1fc6bd, type: 3}
+  m_Name: AnimalTrainCollection
+  m_EditorClassIdentifier: Assembly-CSharp::AnimalTrainCollection
+  friends:
+  - id: rabbit
+    rewardLevel: 5
+    celebration: {fileID: 6357158679900054271, guid: 901b7796f3afe4405b27960ae97fd6a5, type: 3}
+    passenger: {fileID: 8361569143427964563, guid: 627ded5d4307c4a55adf736d6bd5a9a2, type: 3}
+  - id: fox
+    rewardLevel: 10
+    celebration: {fileID: 6135866265291844301, guid: dbd6273d0ee3d49159a7905398d8b5d9, type: 3}
+    passenger: {fileID: 2616979266338157129, guid: 84fadc74a4f4a4327bb0542c8542f59f, type: 3}
+  - id: bear
+    rewardLevel: 15
+    celebration: {fileID: 5021518192384941404, guid: 2c74ac01b2cce428fb0dc54f29db7f04, type: 3}
+    passenger: {fileID: 4647871381237744212, guid: 55d81b828cf41496484524ed3a347736, type: 3}
+  - id: panda
+    rewardLevel: 20
+    celebration: {fileID: 8035817634425930929, guid: 13cd8aea7f24a40428949929a69c28ff, type: 3}
+    passenger: {fileID: 3790351873045436250, guid: 9b41b86e4f5e94ab1acd976c81e616e0, type: 3}
+  - id: penguin
+    rewardLevel: 25
+    celebration: {fileID: 7819426955964777776, guid: aa9e2389e0d12403eba9e2499dda64b5, type: 3}
+    passenger: {fileID: 6684826424482230529, guid: 6dda956f8cb9a4968ab3d7367fb483a1, type: 3}

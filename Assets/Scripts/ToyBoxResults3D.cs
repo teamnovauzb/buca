@@ -22,7 +22,16 @@ public sealed partial class ToyBoxResults3D : MonoBehaviour
     public TMP_Text[] scoreValues;
     public GameObject[] earnedStars;
     public TMP_Text countdownText,comboText;
+    public bool countdownNumberOnly;
     public ToyBoxWellDone3D wellDone;
+    public ToyBoxWellDone3D worldOneWellDone, worldTwoWellDone;
+    public void SelectWellDoneTheme(int levelNumber)
+    {
+        if(worldOneWellDone==null)worldOneWellDone=wellDone;
+        if(worldOneWellDone!=null)worldOneWellDone.gameObject.SetActive(false);
+        if(worldTwoWellDone!=null)worldTwoWellDone.gameObject.SetActive(false);
+        wellDone=levelNumber>30 && worldTwoWellDone!=null?worldTwoWellDone:worldOneWellDone;
+    }
     public GameObject scorecardShortcut;
     bool normalResult;
     public bool ShowingWellDone => normalResult && wellDone!=null;
@@ -72,7 +81,7 @@ public sealed partial class ToyBoxResults3D : MonoBehaviour
 
     public void ToggleScorecard()
     {
-        if(!IsShowing || _press>0 || scorecardRoot==null) return;
+        if(!IsShowing || _press>0 || scorecardRoot==null || scorecardShortcut==null || !scorecardShortcut.activeInHierarchy) return;
         bool showing=!ScorecardShowing;
         scorecardRoot.SetActive(showing); SetResultVisible(!showing);
         if(showing) { celebrationTime=6f; StopCelebration(); }
@@ -112,6 +121,7 @@ public sealed partial class ToyBoxResults3D : MonoBehaviour
         presentation.SetActive(true);
         scorecardRoot.SetActive(false);
         cardPage=LevelManager.Instance!=null?(LevelManager.Instance.CurrentLevelNumber-1)/6:0;
+        SelectWellDoneTheme(LevelManager.Instance!=null?LevelManager.Instance.CurrentLevelNumber:1);
         bool oneShot=score.strokesUsed==1;
         normalResult=!oneShot && wellDone!=null;
         SetResultVisible(true);
@@ -175,20 +185,6 @@ public sealed partial class ToyBoxResults3D : MonoBehaviour
         if(!IsShowing) return;
         Fit();
         if(entrance<EntranceDuration) SampleEntrance();
-        bool cardClick=Input.GetMouseButtonDown(0) && scorecardHit.Raycast(resultsCamera.ScreenPointToRay(Input.mousePosition),out var cardHit,100);
-        if(!_neutral && (cardClick || Input.GetKeyDown(KeyCode.Tab) || ArcadeInputAdapter.GetButtonDown(ArcadeInputAdapter.Button.Green)))
-        { ToggleScorecard(); return; }
-        if(ScorecardShowing)
-        {
-            if(ArcadeInputAdapter.ConfirmDown() || ArcadeInputAdapter.CancelDown() || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.Escape)) { ToggleScorecard(); return; }
-            var stick=ArcadeInputAdapter.GetStick();
-            if(Input.GetKey(KeyCode.RightArrow)) stick.x=1;
-            if(Input.GetKey(KeyCode.LeftArrow)) stick.x=-1;
-            if(stick.sqrMagnitude<.2f) _nextPage=0;
-            else if(Time.unscaledTime>=_nextPage)
-            { TurnScorecardPage(Mathf.Abs(stick.x)>Mathf.Abs(stick.y)?(stick.x>0?1:-1):(stick.y<0?1:-1)); _nextPage=Time.unscaledTime+.3f; }
-            return;
-        }
         bool held=Input.GetMouseButton(0) || Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.Return)
             || ArcadeInputAdapter.GetButton(ArcadeInputAdapter.Button.Black);
         if(_neutral) { if(!held) _neutral=false; }
@@ -235,14 +231,14 @@ public sealed partial class ToyBoxResults3D : MonoBehaviour
         }
     }
     void RefreshLabels() { foreach(var label in solidLabels) label.Refresh(); }
-    void UpdateCountdown() { countdownText.text="IN "+Mathf.Max(1,Mathf.CeilToInt(Remaining)); if(ShowingWellDone)wellDone.SetCountdown(Remaining); RefreshLabels(); }
+    void UpdateCountdown() { countdownText.text=(countdownNumberOnly?"":"IN ")+Mathf.Max(1,Mathf.CeilToInt(Remaining)); if(ShowingWellDone)wellDone.SetCountdown(Remaining); RefreshLabels(); }
     void SetResultVisible(bool visible)
     {
         leftBoard.gameObject.SetActive(visible && !ShowingWellDone);
         nextRoot.gameObject.SetActive(visible && !ShowingWellDone);
         podiumBase.gameObject.SetActive(visible && !ShowingWellDone);
         if(wellDone!=null)wellDone.gameObject.SetActive(visible && ShowingWellDone);
-        if(scorecardShortcut!=null)scorecardShortcut.SetActive(!ShowingWellDone);
+        if(scorecardShortcut!=null)scorecardShortcut.SetActive(false);
     }
     public void Fit()
     {

@@ -31,7 +31,7 @@ using Newtonsoft.Json;
 public class LuxoddGameBridge : MonoBehaviour
 {
     public static LuxoddGameBridge Instance { get; private set; }
-    const int CampaignLevelCount = 30;
+    const int CampaignLevelCount = 50;
 
 #if LUXODD_INTEGRATION
     [Header("Plugin references (drag from UnityPluginPrefab)")]
@@ -145,6 +145,12 @@ public class LuxoddGameBridge : MonoBehaviour
 #endif
 
     void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
+    {
+        if (GameScenePreloader.IsPreparing(scene)) return;
+        ActivatePreparedScene(scene);
+    }
+
+    public void ActivatePreparedScene(UnityEngine.SceneManagement.Scene scene)
     {
         // After a scene loads, auto-wire ourselves into any scene-local
         // objects that need a bridge reference. Both LevelManager and

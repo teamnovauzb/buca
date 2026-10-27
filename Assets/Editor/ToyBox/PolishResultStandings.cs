@@ -20,7 +20,8 @@ public static class PolishResultStandings
     {
         string path=Folder+"/StandingsFont.asset";
         var saved=AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(path);
-        if(saved!=null&&saved.atlasRenderMode==UnityEngine.TextCore.LowLevel.GlyphRenderMode.SDFAA)return saved;
+        if(saved!=null&&saved.atlasRenderMode==UnityEngine.TextCore.LowLevel.GlyphRenderMode.SDFAA)
+        {ArcadeFontClarity.Configure(saved);return saved;}
         var source=AssetDatabase.LoadAssetAtPath<Font>("Assets/TextMesh Pro/Fonts/LiberationSans.ttf");
         bool created=saved==null;
         if(created)
@@ -42,7 +43,7 @@ public static class PolishResultStandings
         saved.atlasPopulationMode=AtlasPopulationMode.Static;saved.boldStyle=.75f;
         if(created)AssetDatabase.AddObjectToAsset(saved.material,saved);
         foreach(var atlas in saved.atlasTextures){if(!AssetDatabase.Contains(atlas))AssetDatabase.AddObjectToAsset(atlas,saved);EditorUtility.SetDirty(atlas);}
-        EditorUtility.SetDirty(saved);return saved;
+        ArcadeFontClarity.Configure(saved);EditorUtility.SetDirty(saved);return saved;
     }
     static Material Mat(string name,Color color,float metallic=0)
     {

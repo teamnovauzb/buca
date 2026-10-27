@@ -285,8 +285,9 @@ public static class LuxoddNumberedLabels
     {
         var plate=root.GetComponentsInChildren<Transform>(true).First(t=>t.name=="SkipNameplate");
         var skip=root.GetComponentsInChildren<Transform>(true).First(t=>t.name=="BlackArcadeSkip");
-        skip.localPosition=new Vector3(6.32f,-3.14f,-.77f);skip.localScale=Vector3.one*.74f;
-        plate.localPosition=new Vector3(6.32f,-3.90f,-.75f);
+        skip.localPosition=new Vector3(6.32f,-3.14f,-.77f);skip.localScale=Vector3.one*.55f;
+        plate.localPosition=new Vector3(6.32f,-3.76f,-.75f);
+        plate.localScale=Vector3.one*.75f;
         plate.Find("SkipBrassBorder").localScale=new Vector3(1,.60f,1);
         plate.Find("SkipIvoryFace").localScale=new Vector3(1,.60f,1);
         Refit(plate.Find("SkipLetters"),new Vector3(.20f,0,-.23f),.24f,.99f);

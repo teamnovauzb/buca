@@ -349,7 +349,7 @@ public static class ToyBoxStartupValidation
                 if(!level.useShotLives) throw new Exception("Hearts disabled in the saved game.");
                 var budget = typeof(LevelManager).GetMethod("GetMaxLivesForLevel",BindingFlags.Instance|BindingFlags.NonPublic);
                 for(int i=0;i<30;i++)
-                    if((int)budget.Invoke(level,new object[]{i}) != Mathf.Max(5,i+1)) throw new Exception("Wrong move budget at level "+(i+1));
+                    if((int)budget.Invoke(level,new object[]{i}) != (i<10 ? 5 : i<20 ? 4 : 3)) throw new Exception("Wrong move budget at level "+(i+1));
                 int lives=level.CurrentLives;
                 typeof(LevelManager).GetMethod("OnMissedShot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(level,null);
                 if(level.CurrentLives!=lives-1) throw new Exception("Miss did not consume exactly one heart.");

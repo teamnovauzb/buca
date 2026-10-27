@@ -9,8 +9,8 @@ using UnityEngine;
 /// <summary>Difficulty-only pass. Keeps level order, obstacle geometry, art and tutorials.</summary>
 public static class KidsDifficultyProgression
 {
-    public static int Seconds(int n)=>20+(n-1)*2;
-    public static int Hearts(int n)=>Mathf.Max(5,n);
+    public static int Seconds(int n)=>n<=1?20:30+(n-2)*3;
+    public static int Hearts(int n)=>n<=10?5:n<=20?4:3;
     [MenuItem("RealBuca/Balance Campaign/Apply Move Progression Only")]
     public static string ApplyMovesOnly()
     {
@@ -33,7 +33,7 @@ public static class KidsDifficultyProgression
             EditorUtility.SetDirty(settings[n-1]);AssetDatabase.SaveAssetIfDirty(settings[n-1]);
         }
         File.WriteAllText("output/balance/move-progression.csv",report.ToString());
-        return "Saved move allowances: levels 1–5 = 5, then +1 per level through level 30 = 30. Backup: "+backup;
+        return "Saved heart allowances: levels 1–10 = 5, 11–20 = 4, 21–30 = 3. Backup: "+backup;
     }
     [MenuItem("RealBuca/Balance Campaign/Apply Timer Progression Only")]
     public static string ApplyTimersOnly()
@@ -57,7 +57,7 @@ public static class KidsDifficultyProgression
             EditorUtility.SetDirty(settings[n-1]);AssetDatabase.SaveAssetIfDirty(settings[n-1]);
         }
         File.WriteAllText("output/balance/timer-progression.csv",report.ToString());
-        return "Saved all 30 level timers: level 1 = 20 seconds, +2 per level, level 30 = 78 seconds. Backup: "+backup;
+        return "Saved all 30 level timers: level 1 = 20 seconds, level 2 = 30 seconds, then +3 per level, level 30 = 114 seconds. Backup: "+backup;
     }
     static void Tune(GameObject root,int n)
     {

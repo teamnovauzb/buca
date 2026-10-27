@@ -293,8 +293,8 @@ public class PuckController : MonoBehaviour
     }
 
     // ─── Arcade joystick input ──────────────────────────────
-    // Joystick direction points the aim directly in screen space.
-    // Analog/pointer displacement selects power; returning to center retains it.
+    // Cabinet joystick rotates aim continuously, including between digital directions.
+    // On-screen pointer displacement selects direction and power.
     // Black can charge further, then fires on release. Red cancels.
     // Digital sticks provide direction only and report full displacement.
     [Header("Arcade input")]
@@ -385,6 +385,69 @@ public class PuckController : MonoBehaviour
         public bool terminalTrigger;
     }
 
+    void RotateArcadeAim(Vector2 stick, bool fineAimHeld, float deltaTime)
+    {
+        if (!_arcadeAimInitialized)
+        {
+            // Preserve the previous first-touch behavior (+Z for every
+            // direction except DOWN, which starts at -Z) while storing the
+            // angle in the conventional 0° RIGHT / 180° LEFT convention.
+            _arcadeAimAngleDegrees = stick.y < -arcadeDeadzone ? 270f : 90f;
+            _arcadeAimInitialized = true;
+        }
+
+        float absX = Mathf.Abs(stick.x);
+        float absY = Mathf.Abs(stick.y);
+        bool verticalHeld = absY > arcadeDeadzone;
+
+        // Once a vertical command starts, keep its turn direction latched
+        // until Y returns to neutral. This is what lets a held UP/DOWN pass
+        // cleanly from one half of the circle into the other instead of
+        // reversing or jittering on the boundary.
+        bool useVertical = verticalHeld && (_verticalAimWasHeld || absY > absX);
+        float turnInput = 0f;
+        if (useVertical)
+        {
+            if (!_verticalAimWasHeld)
+                _latchedVerticalTurn = GetVerticalTurnForQuadrant(
+                    _arcadeAimAngleDegrees, stick.y);
+
+            _verticalAimWasHeld = true;
+            turnInput = _latchedVerticalTurn;
+        }
+        else
+        {
+            _verticalAimWasHeld = false;
+            _latchedVerticalTurn = 0f;
+
+            // The old LEFT/RIGHT behavior is preserved exactly. The minus
+            // sign only compensates for changing the stored angle from the
+            // old 0°=+Z convention to conventional 0°=RIGHT.
+            if (absX > arcadeDeadzone)
+                turnInput = -Mathf.Sign(stick.x);
+        }
+
+        if (turnInput != 0f)
+        {
+            // Clamp a single-frame hitch so returning from a browser stall
+            // cannot make the aim jump by a large, unpredictable angle.
+            float safeDeltaTime = Mathf.Clamp(deltaTime, 0f, 0.05f);
+            float normalRotationSpeed = arcadeAimRotationSpeed >= 30f
+                ? arcadeAimRotationSpeed : 100f;
+            float preciseRotationSpeed = Mathf.Clamp(
+                fineAimRotationSpeed, 10f, normalRotationSpeed);
+            float rotationSpeed = fineAimHeld
+                ? preciseRotationSpeed : normalRotationSpeed;
+            _arcadeAimAngleDegrees = Mathf.Repeat(
+                _arcadeAimAngleDegrees
+                + turnInput * rotationSpeed * safeDeltaTime,
+                360f);
+        }
+
+        float radians = _arcadeAimAngleDegrees * Mathf.Deg2Rad;
+        _arcadeAimDir = new Vector3(Mathf.Cos(radians), 0f, Mathf.Sin(radians));
+    }
+
     void UpdateArcadeInput()
     {
         Vector2 stick = ReadArcadeAim();
@@ -402,26 +465,37 @@ public class PuckController : MonoBehaviour
             fireHeld = false;
         }
 
-        // Direct aiming: up/right/diagonals point the shot in the same screen
-        // direction. Stick displacement selects the actual launch strength.
+        // The cabinet lever adjusts the angle over time; the pointer stick aims
+        // directly. Digital direction magnitude must not set shot power.
         if (mag > arcadeDeadzone)
         {
-            Vector3 forward=_cam!=null?Vector3.ProjectOnPlane(_cam.transform.forward,Vector3.up).normalized:Vector3.forward;
-            Vector3 right=_cam!=null?Vector3.ProjectOnPlane(_cam.transform.right,Vector3.up).normalized:Vector3.right;
-            _arcadeAimDir=(right*stick.x+forward*stick.y).normalized;
-            _arcadeAimAngleDegrees=Mathf.Atan2(_arcadeAimDir.z,_arcadeAimDir.x)*Mathf.Rad2Deg;
-            _arcadeAimInitialized=true;
-            // Keep the last selected strength when the stick returns to center.
-            // Holding Shoot can still increase it; release uses the shown power.
-            if(!fireHeld && !_arcadeFireWasHeld)
-                _arcadePower=Mathf.Lerp(minChargeToFire,1f,Mathf.InverseLerp(arcadeDeadzone,1f,Mathf.Min(1f,mag)));
+            if (ToyBoxGameplayHud.PanelStick.sqrMagnitude > .001f)
+            {
+                Vector3 forward=_cam!=null?Vector3.ProjectOnPlane(_cam.transform.forward,Vector3.up).normalized:Vector3.forward;
+                Vector3 right=_cam!=null?Vector3.ProjectOnPlane(_cam.transform.right,Vector3.up).normalized:Vector3.right;
+                _arcadeAimDir=(right*stick.x+forward*stick.y).normalized;
+                _arcadeAimAngleDegrees=Mathf.Atan2(_arcadeAimDir.z,_arcadeAimDir.x)*Mathf.Rad2Deg;
+                _arcadeAimInitialized=true;
+                // Keep the last selected strength when the stick returns to center.
+                // Holding Shoot can still increase it; release uses the shown power.
+                if(!fireHeld && !_arcadeFireWasHeld)
+                    _arcadePower=Mathf.Lerp(minChargeToFire,1f,Mathf.InverseLerp(arcadeDeadzone,1f,Mathf.Min(1f,mag)));
+                ResetVerticalAimLatch();
+            }
+            else
+            {
+                RotateArcadeAim(stick, fineAimHeld, Time.unscaledDeltaTime);
+            }
             if (!_isDragging)
             {
                 _isDragging=true;
                 if(aimLine!=null) aimLine.enabled=true;
             }
         }
-        ResetVerticalAimLatch();
+        else
+        {
+            ResetVerticalAimLatch();
+        }
 
         // 2) While Black is held AND we have an aim direction → charge power.
         // A first press is useful even before a child has touched the stick.
@@ -690,10 +764,11 @@ public class PuckController : MonoBehaviour
     /// </summary>
     readonly System.Collections.Generic.List<Vector3> _tutorialFrames = new();
     bool _recordTutorial;
+    public bool TutorialPathEndsInGoal { get; private set; }
     /// <summary>Read-only samples at physics cadence from the normal aiming predictor.</summary>
     public Vector3[] GetTutorialPath(Vector3 direction, float power)
     {
-        _tutorialFrames.Clear();_recordTutorial=true;
+        _tutorialFrames.Clear();_recordTutorial=true;TutorialPathEndsInGoal=false;
         try
         {
             UpdatePreview(-direction.normalized * maxDragDistance * Mathf.Clamp01(power));
@@ -802,6 +877,7 @@ public class PuckController : MonoBehaviour
                     // the exact line rather than opening an uncertainty corridor.
                     if (dynamicHitFirst && dynamicHit.terminalTrigger)
                     {
+                        if (_recordTutorial) TutorialPathEndsInGoal = dynamicHit.collider.GetComponentInParent<HoleTrigger>() != null;
                         origin = centerAtImpact;
                         terminateTrajectory = true;
                         stepTime = 0f;
@@ -1100,7 +1176,10 @@ public class PuckController : MonoBehaviour
             if (hole != null && hole.isActiveAndEnabled
                 && !_previewDynamicColliderSet.Contains(holeCollider)
                 && PreviewOverlaps(holeCollider, position, radius))
+            {
+                if (_recordTutorial) TutorialPathEndsInGoal = true;
                 return false;
+            }
         }
         for (int i = 0; i < _previewDeadlyTriggers.Length; i++)
         {

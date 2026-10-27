@@ -11,6 +11,7 @@ public sealed class BucaArcadeResult3D : MonoBehaviour
     public Mesh[] numeralMeshes;
     public AudioClip finalChime;
     public BucaPodiumLeaderboard3D leaderboard;
+    public BucaLeaderboardWorldTheme worldTheme;
     public GameObject[] leaderboardObjects;
     public bool ShowingLeaderboard { get; private set; }
     public int DisplayedScore { get; private set; }
@@ -25,6 +26,11 @@ public sealed class BucaArcadeResult3D : MonoBehaviour
         if (!visible) return;
         if (presentation != panel.PresentationId)
         {
+            if (worldTheme != null)
+            {
+                worldTheme.ApplyForCurrentWorld();
+                worldTheme.CaptureBackdrop();
+            }
             presentation = panel.PresentationId; started = panel.ShownAtUnscaled;
             nextTick = .8f; previous = -1; chimed = false; CountComplete = false;
         }
@@ -35,7 +41,7 @@ public sealed class BucaArcadeResult3D : MonoBehaviour
         float enter = Mathf.Clamp01(age / .8f);
         float ease = 1 - Mathf.Pow(1 - enter, 4);
         cabinet.localPosition = new Vector3(-4.7f, Mathf.Lerp(-1.4f, 0, ease), 0);
-        cabinet.localRotation = Quaternion.Euler(Mathf.Lerp(-7, 0, ease), 0, 0);
+        cabinet.localRotation = Quaternion.Euler(Mathf.Lerp(-7, 0, ease), worldTheme != null && worldTheme.IsCity ? 5f * ease : 0, 0);
         cabinet.localScale = Vector3.one * Mathf.Lerp(.66f, .75f, ease);
         float t = Mathf.Clamp01((age - .8f) / 2.1f);
         int score = Mathf.Max(0, panel.PlayerScore);

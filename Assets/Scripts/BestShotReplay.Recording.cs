@@ -31,35 +31,68 @@ public sealed partial class BestShotReplay
         public VisualPose[] poses;
         public readonly float[] times = new float[MaxFrames];
         public int count, level, strokes;
-        public float distance, fov;
+        public float distance, fov, goalDistance;
+        public bool completedGoal;
         public Vector3 cameraPosition;
         public Quaternion cameraRotation;
         public float Duration => count > 0 ? times[count - 1] : 0;
     }
     Clip _working = new Clip(), _best;
+    readonly List<Clip> _levelShots = new List<Clip>();
+    int _replayLevel;
+    Vector3 _recordedGoal;
     MeshRenderer[] _sources;
     Transform _recordedPuck;
     Vector3 _lastPuck;
     float _recordStarted, _nextSample;
     bool _capturing;
 
-    public bool HasBestShot => _best != null && _best.count > 2;
+    public bool HasBestShot => _best != null && _best.level > 1 && _best.count > 2;
     public int BestLevelNumber => HasBestShot ? _best.level : 0;
     public int BestStrokeCount => HasBestShot ? _best.strokes : 0;
     public int BestFrameCount => HasBestShot ? _best.count : 0;
     public bool IsRecording => _capturing;
 
+    // World 1 keeps its campaign highlight. City replays belong to the current
+    // level, including completed misses when the player has not sunk a shot yet.
+    public void BeginLevel(int levelNumber)
+    {
+        CancelRecording();
+        if (levelNumber > 30 || _replayLevel > 30)
+        {
+            _best = null;
+            _levelShots.Clear();
+        }
+        _replayLevel = levelNumber;
+    }
+
+    public bool HasBestShotForLevel(int levelNumber)
+    {
+        return HasBestShot && (levelNumber > 30 ? _best.level == levelNumber : _best.level <= 30);
+    }
+
     public void BeginShot(GameObject board, GameObject puck, int levelNumber,
         Vector3 cameraPosition, Quaternion cameraRotation, float cameraFov)
     {
-        CancelRecording();
-        if (IsShowing || board == null || puck == null) return;
+        if (_replayLevel != levelNumber) BeginLevel(levelNumber);
+        else CancelRecording();
+        // Level 1 is introductory and does not qualify for the best-shot replay.
+        if (levelNumber <= 1 || IsShowing || board == null || puck == null) return;
         var moving = new List<MeshRenderer>();
         AddRenderers(board.transform, moving, false);
         AddRenderers(puck.transform, moving, false);
         var scenery = new List<MeshRenderer>();
         if (environmentRoots != null)
             foreach (var root in environmentRoots) AddRenderers(root, scenery, true);
+        if(levelNumber>30)
+        {
+            var theme=FindAnyObjectByType<EveningGameplayTheme>();
+            if(theme!=null && theme.station!=null)
+            {
+                var city=new List<MeshRenderer>();AddRenderers(theme.station.transform,city,true);
+                foreach(var renderer in city)if(!scenery.Contains(renderer))scenery.Add(renderer);
+            }
+        }
         if (moving.Count == 0 || savedRenderers == null || moving.Count + scenery.Count > savedRenderers.Length)
         {
             Debug.LogWarning("[BestShotReplay] Saved renderer capacity is too small for this board; replay omitted.");
@@ -68,6 +101,9 @@ public sealed partial class BestShotReplay
         _working.count = 0;
         _working.distance = 0;
         _working.level = levelNumber;
+        _working.completedGoal = false;
+        var hole = board.transform.Find("Hole");
+        _recordedGoal = hole != null ? hole.position : Vector3.positiveInfinity;
         _working.cameraPosition = cameraPosition;
         _working.cameraRotation = cameraRotation;
         _working.fov = cameraFov;
@@ -142,14 +178,33 @@ public sealed partial class BestShotReplay
     }
     public void CommitGoal(int strokes)
     {
+        CommitShot(strokes, true);
+    }
+    public void CommitAttempt(int strokes)
+    {
+        // Preserve World 1's successful-shot selection rules.
+        if (_replayLevel <= 30) { CancelRecording(); return; }
+        CommitShot(strokes, false);
+    }
+    void CommitShot(int strokes, bool completedGoal)
+    {
         if (!_capturing) return;
         CaptureFrame(Time.time - _recordStarted);
         if (_capturing && _working.count > 2 && _working.distance > .2f && strokes > 0)
         {
             _working.strokes = strokes;
-            // Prefer a hole completed in fewer shots, then a longer successful
-            // flight. Debug wins, tutorials, misses and undone shots never qualify.
-            if (_best == null || strokes < _best.strokes ||
+            _working.completedGoal = completedGoal;
+            var toGoal = _recordedPuck.position - _recordedGoal;
+            _working.goalDistance = new Vector2(toGoal.x, toGoal.z).sqrMagnitude;
+            if (_replayLevel > 30)
+            {
+                // Retain this level's attempts so Undo can restore the previous
+                // best instead of replaying a shot the player has taken back.
+                _levelShots.Add(_working);
+                if (IsBetterCityShot(_working, _best)) _best = _working;
+                _working = new Clip();
+            }
+            else if (_best == null || strokes < _best.strokes ||
                 (strokes == _best.strokes && _working.distance > _best.distance))
             {
                 var previous = _best;
@@ -158,6 +213,28 @@ public sealed partial class BestShotReplay
             }
         }
         CancelRecording();
+    }
+    static bool IsBetterCityShot(Clip candidate, Clip best)
+    {
+        if (best == null) return true;
+        if (candidate.completedGoal != best.completedGoal) return candidate.completedGoal;
+        if (candidate.completedGoal && candidate.strokes != best.strokes)
+            return candidate.strokes < best.strokes;
+        if (!candidate.completedGoal && candidate.goalDistance != best.goalDistance)
+            return candidate.goalDistance < best.goalDistance;
+        return candidate.distance > best.distance;
+    }
+    public void DiscardShotsAfter(int strokes)
+    {
+        CancelRecording();
+        if (_replayLevel <= 30) return;
+        _best = null;
+        for (int i = _levelShots.Count - 1; i >= 0; i--)
+        {
+            var shot = _levelShots[i];
+            if (shot.strokes > strokes) _levelShots.RemoveAt(i);
+            else if (IsBetterCityShot(shot, _best)) _best = shot;
+        }
     }
     public void CancelRecording()
     {
@@ -170,6 +247,8 @@ public sealed partial class BestShotReplay
         CancelRecording();
         Hide(false);
         _best = null;
+        _levelShots.Clear();
+        _replayLevel = 0;
     }
     void PrepareRecordedVisuals()
     {

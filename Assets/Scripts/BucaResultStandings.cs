@@ -13,6 +13,9 @@ public sealed class BucaResultStandings : MonoBehaviour
     public Material[] rankMaterials;
     public GameObject[] playerMarkers;
     public Material normalFace, playerFace;
+    public Material normalBadgeFace;
+    public Color rankInk = new Color(.018f,.12f,.13f);
+    public GameObject[] playerOutlines;
     public Color ink = new Color(.025f,.15f,.16f), ivory = new Color(1f,.95f,.81f);
     public TMP_Text footer;
     void LateUpdate() => Sync(panel);
@@ -33,14 +36,15 @@ public sealed class BucaResultStandings : MonoBehaviour
             if(separated)
             {
                 bool mine=source.IsPlayerRow;hasPlayer|=mine;
-                Write(rankLabels[i],source.rankText.text=="-"?"–":source.rankText.text,ink);
+                Write(rankLabels[i],source.rankText.text=="-"?"–":source.rankText.text,rankInk);
                 Write(labels[i],source.nameText.text,mine?ivory:ink);
                 Write(scoreLabels[i],source.scoreText.text,mine?ivory:ink);
                 if(rowFaces!=null&&i<rowFaces.Length&&rowFaces[i]!=null)
                     rowFaces[i].sharedMaterial=mine?playerFace:normalFace;
                 if(playerMarkers!=null&&i<playerMarkers.Length&&playerMarkers[i]!=null)playerMarkers[i].SetActive(mine);
+                if(playerOutlines!=null&&i<playerOutlines.Length&&playerOutlines[i]!=null)playerOutlines[i].SetActive(mine);
                 if(rankBadges!=null&&i<rankBadges.Length&&rankBadges[i]!=null)
-                    rankBadges[i].sharedMaterial=rank>0&&rank<=3&&rankMaterials!=null&&rank<=rankMaterials.Length?rankMaterials[rank-1]:normalFace;
+                    rankBadges[i].sharedMaterial=rank>0&&rank<=3&&rankMaterials!=null&&rank<=rankMaterials.Length?rankMaterials[rank-1]:(normalBadgeFace!=null?normalBadgeFace:normalFace);
             }
             else labels[i].text=source.rankText.text+"<pos=12%>"+source.nameText.text+"<pos=76%>"+source.scoreText.text;
             ranked|=rank>0;

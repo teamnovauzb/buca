@@ -14,7 +14,7 @@ public class LevelSettings : ScriptableObject
     [Tooltip("Level par and the stroke target for 3 stars. Above par = 2 stars, above 2× par = 1 star.")]
     public int threeStarStrokes = 2;
 
-    [Tooltip("Starting move allowance. A missed shot consumes one move; the campaign starts with 5 and adds 1 per level after level 5.")]
+    [Tooltip("Starting hearts. A missed shot consumes one heart: levels 1–10 get 5, 11–20 get 4, and 21–30 get 3.")]
     [Min(1)]
     public int maxLives = 3;
 

@@ -114,8 +114,8 @@ public static class BestShotReplayBaker
             if(audio!=null)view.revealSound=audio.levelStartSfx;
 
             var recorded=Group("SavedRecordedWorld",root.transform,new Vector3(300,0,0));view.recordedStage=recorded.gameObject;
-            view.savedMeshes=new MeshFilter[768];view.savedRenderers=new MeshRenderer[768];
-            for(int i=0;i<768;i++)
+            view.savedMeshes=new MeshFilter[2304];view.savedRenderers=new MeshRenderer[2304];
+            for(int i=0;i<2304;i++)
             {
                 var go=new GameObject("SavedVisualSlot"+i,typeof(MeshFilter),typeof(MeshRenderer));go.transform.SetParent(recorded,false);
                 view.savedMeshes[i]=go.GetComponent<MeshFilter>();view.savedRenderers[i]=go.GetComponent<MeshRenderer>();view.savedRenderers[i].enabled=false;

@@ -1,6 +1,7 @@
 using UnityEngine;
 
 /// <summary>One small hole-local celebration using only Editor-saved 3D meshes.</summary>
+[DefaultExecutionOrder(1000)]
 public sealed class ToyBoxWinCelebration : MonoBehaviour
 {
     public Transform presentation, goldRing;
@@ -45,7 +46,9 @@ public sealed class ToyBoxWinCelebration : MonoBehaviour
         Sample(0);
     }
 
-    void Update()
+    // Camera follow and victory push run in LevelManager.LateUpdate. Anchor
+    // the banner afterward so it never renders against the previous camera pose.
+    void LateUpdate()
     {
         if(!IsPlaying) return;
         _elapsed+=Time.unscaledDeltaTime;
@@ -85,9 +88,8 @@ public sealed class ToyBoxWinCelebration : MonoBehaviour
     void SampleBanner(float seconds)
     {
         if(_viewCamera==null) return;
-        float t=Mathf.Clamp01(seconds/.52f)-1f;
-        float entrance=1f+2.1f*t*t*t+1.1f*t*t;
-        float exit=Mathf.SmoothStep(0,1,Mathf.InverseLerp(2.48f,Duration,seconds));
+        float entrance=SmoothBannerProgress(seconds/.65f);
+        float exit=SmoothBannerProgress(Mathf.InverseLerp(2.35f,Duration,seconds));
         const float distance=12f;
         float visibleWidth=_viewCamera.orthographic ? _viewCamera.orthographicSize*2*_viewCamera.aspect
             : 2*distance*Mathf.Tan(_viewCamera.fieldOfView*.5f*Mathf.Deg2Rad)*_viewCamera.aspect;
@@ -95,6 +97,12 @@ public sealed class ToyBoxWinCelebration : MonoBehaviour
         woodenBanner.position=_viewCamera.ViewportToWorldPoint(new Vector3(.5f,.44f-.13f*(1-entrance)-exit*.18f,distance));
         woodenBanner.rotation=_viewCamera.transform.rotation*Quaternion.Euler(6*(1-entrance),0,0);
         woodenBanner.localScale=Vector3.one*size*Mathf.Max(.001f,entrance*(1-exit));
+    }
+
+    static float SmoothBannerProgress(float progress)
+    {
+        float t=Mathf.Clamp01(progress);
+        return t*t*t*(t*(t*6f-15f)+10f);
     }
 
     public void Hide()

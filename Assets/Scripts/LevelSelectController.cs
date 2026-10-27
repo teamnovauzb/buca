@@ -432,7 +432,7 @@ public class LevelSelectController : MonoBehaviour
 
         // Progression LOCK: a level beyond the highest unlocked one can't be
         // started — by mouse OR keyboard. Pressing Enter on it does nothing.
-        if (index > PlayerPrefs.GetInt(HighestUnlockedKey, 0))
+        if (index < 0 || index >= levels.Count || index > BucaLevelAvailability.HighestUnlocked || BucaLevelAvailability.IsManuallyLocked(index))
         {
             if (AudioManager.Instance != null) AudioManager.Instance.PlayNavTick(); // soft "locked" blip
             return;
@@ -453,12 +453,12 @@ public class LevelSelectController : MonoBehaviour
     {
         // ── Progression unlock ─────────────────────────────────────
         // Levels 0.._highestUnlocked are playable; the rest are locked.
-        // Driven SOLELY by the saved highest-completed value: it defaults to 0,
+        // Driven by saved progress within the available campaign: it defaults to 0,
         // so a FRESH game has only Level 1 unlocked, and it is bumped exactly
         // one step when a level is completed (in LevelManager). We deliberately
         // do NOT reconstruct it from per-level star data — that was the bug that
         // auto-unlocked old progress.
-        _highestUnlocked = Mathf.Clamp(PlayerPrefs.GetInt(HighestUnlockedKey, 0), 0, Mathf.Max(0, levels.Count - 1));
+        _highestUnlocked = Mathf.Clamp(BucaLevelAvailability.HighestUnlocked, 0, Mathf.Max(0, levels.Count - 1));
 
         int totalCompleted = 0;
         int totalStars = 0;
@@ -471,7 +471,7 @@ public class LevelSelectController : MonoBehaviour
             int bestStrokes = PlayerPrefs.GetInt(LevelManager.PrefLevelBestStrokes + i, 0);
             int par = PlayerPrefs.GetInt(LevelManager.PrefLevelPar + i, 0);
             var entry = levels[i];
-            bool locked = i > _highestUnlocked;
+            bool locked = i > _highestUnlocked || BucaLevelAvailability.IsManuallyLocked(i);
 
             bool completed = score > 0 || stars > 0;
             if (entry.checkmark != null) entry.checkmark.enabled = completed && !locked;

@@ -63,7 +63,7 @@ public static partial class BuildToyBoxMainMenu
         var icon=MeshObject("Heart",counter,new Vector3(-.98f,0,-.27f),heart,red);
         icon.transform.localScale=new Vector3(.56f,.56f,.48f);
         Text("MOVES",counter,new Vector3(.32f,.21f,-.27f),.16f,hud.normalTime);
-        hud.livesLeftDigits=Number(counter,new Vector3(.32f,-.13f,-.27f),2,.38f,hud.normalTime,hud.digitMeshes);
+        hud.livesLeftDigits=Number(counter,new Vector3(.32f,-.13f,-.27f),3,.38f,hud.normalTime,hud.digitMeshes);
         hud.livesTotalDigits=new MeshFilter[0];
         counter.gameObject.SetActive(false);
     }
@@ -79,7 +79,7 @@ public static partial class BuildToyBoxMainMenu
         try
         {
             var hud=root.GetComponent<ToyBoxGameplayHud>();BuildMoveCounter(hud);
-            for(int max=5;max<=32;max++)for(int left=0;left<=max;left++)
+            for(int max=5;max<=147;max++)for(int left=0;left<=max;left++)
             {
                 hud.RefreshHearts(left,max);
                 if(hud.numericMoves.activeSelf!=(max>5))throw new System.Exception("Wrong move display mode");
@@ -87,16 +87,18 @@ public static partial class BuildToyBoxMainMenu
                     if(hud.heartSlots[i].activeSelf!=(max<=5&&i<max))throw new System.Exception("Wrong heart visibility");
                 if(max>5)
                 {
-                    if(hud.livesLeftDigits[1].sharedMesh!=hud.digitMeshes[left%10])throw new System.Exception("Wrong units digit");
-                    if(left>=10 && hud.livesLeftDigits[0].sharedMesh!=hud.digitMeshes[left/10])throw new System.Exception("Wrong tens digit");
-                    if(hud.livesLeftDigits[0].gameObject.activeSelf!=(left>=10))throw new System.Exception("Wrong leading digit visibility");
+                    if(hud.livesLeftDigits[2].sharedMesh!=hud.digitMeshes[left%10])throw new System.Exception("Wrong units digit");
+                    if(left>=100 && hud.livesLeftDigits[0].sharedMesh!=hud.digitMeshes[left/100])throw new System.Exception("Wrong hundreds digit");
+                    if(hud.livesLeftDigits[0].gameObject.activeSelf!=(left>=100))throw new System.Exception("Wrong hundreds visibility");
+                    if(left>=10 && hud.livesLeftDigits[1].sharedMesh!=hud.digitMeshes[(left/10)%10])throw new System.Exception("Wrong tens digit");
+                    if(hud.livesLeftDigits[1].gameObject.activeSelf!=(left>=10))throw new System.Exception("Wrong leading digit visibility");
                 }
             }
             hud.RefreshHearts(5,5);PrefabUtility.SaveAsPrefabAsset(root,path);
         }
         finally{PrefabUtility.UnloadPrefabContents(root);}
         AssetDatabase.SaveAssets();
-        return "PASS: saved move counter, every remaining-move state for allowances 5–32, including star rewards. Backup: "+backup;
+        return "PASS: saved move counter, every remaining-move state for allowances 5–147, including star rewards. Backup: "+backup;
     }
     public static void GenerateHeartIndicator()
     {

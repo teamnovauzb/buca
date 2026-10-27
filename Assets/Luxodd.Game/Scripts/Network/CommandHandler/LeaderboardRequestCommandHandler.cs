@@ -1,10 +1,8 @@
 using System;
 using Luxodd.Game.Scripts.Game.Leaderboard;
-using Luxodd.Game.Scripts.HelpersAndUtils.Logger;
 #if NEWTONSOFT_JSON
 using Newtonsoft.Json;
 #endif
-using UnityEngine;
 
 namespace Luxodd.Game.Scripts.Network.CommandHandler
 {
@@ -36,13 +34,32 @@ namespace Luxodd.Game.Scripts.Network.CommandHandler
         protected override void OnCommandResponseSuccessHandler(CommandRequestHandler responseHandler)
         {
             base.OnCommandResponseSuccessHandler(responseHandler);
+            ErrorMessage = null;
+            if (ResponseStatus != CommandResponseStatus.Ok)
+            {
+                OnCommandResponseFailureHandler($"Leaderboard request failed ({StatusCode}).");
+                return;
+            }
 #if NEWTONSOFT_JSON
-            var payloadJson = JsonConvert.SerializeObject(ResponseHandler.Payload);
-            LoggerHelper.Log($"[{DateTime.Now}][{GetType().Name}][{nameof(OnCommandResponseSuccessHandler)}] OK, payload: {payloadJson}");
-            var payloadObject = JsonConvert.DeserializeObject<LeaderboardDataResponse>(payloadJson);
-            LoggerHelper.Log($"[{DateTime.Now}][{GetType().Name}][{nameof(OnCommandResponseSuccessHandler)}] OK, payloadObject: {payloadObject.CurrentUserData.TotalScore}");
+            try
+            {
+                var payloadJson = JsonConvert.SerializeObject(ResponseHandler.Payload);
+                var payloadObject = JsonConvert.DeserializeObject<LeaderboardDataResponse>(payloadJson);
+                if (payloadObject == null)
+                {
+                    OnCommandResponseFailureHandler("Leaderboard response contained no payload.");
+                    return;
+                }
 
-            ResponseHandler.Payload = payloadObject;
+                // An unranked player may have no current_user. The game handles that
+                // normally; logging their score must not prevent the completion callback.
+                ResponseHandler.Payload = payloadObject;
+            }
+            catch (JsonException)
+            {
+                OnCommandResponseFailureHandler("Leaderboard response contained invalid data.");
+                return;
+            }
 #endif
             _onCommandCompletedCallback?.Invoke();
         }

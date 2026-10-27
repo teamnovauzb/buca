@@ -42,18 +42,20 @@ public sealed partial class BestShotReplay : MonoBehaviour
         }
         Tick(Time.unscaledDeltaTime);
     }
-    public bool TryShow(Camera sourceCamera, Action finished)
+    public bool TryShow(Camera sourceCamera, Action finished, int levelNumber = 0)
     {
         CancelRecording();
+        if (levelNumber > 0 && !HasBestShotForLevel(levelNumber)) return false;
         if (IsShowing || !HasBestShot || sourceCamera == null || presentation == null || recordedStage == null
             || frameCamera == null || playbackCamera == null || replayTexture == null || skipHit == null) return false;
         _sourceCamera = sourceCamera;
         _sourceEnabled = sourceCamera.enabled;
+        ApplyReplayTheme();
         CaptureBackdrop(sourceCamera);
         PrepareRecordedVisuals();
         _finished = finished;
         _elapsed = _skipTime = 0;
-        _duration = Mathf.Max(2.2f, Mathf.Min(4.5f, _best.Duration) / .65f);
+        _duration = Mathf.Max(2.2f, Mathf.Min(4.5f, _best.Duration) / .5f);
         _neutral = true;
         skipCap.localPosition = skipRest;
         IsShowing = true;

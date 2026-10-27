@@ -52,7 +52,7 @@ public sealed class CinematicMechanicTutorial : MonoBehaviour
         foreach(var renderer in root.GetComponentsInChildren<Renderer>(true))
             if(!hidden.ContainsKey(renderer)){hidden.Add(renderer,renderer.enabled);renderer.enabled=false;}
     }
-    public void Replay(){time=0;paused=false;ui.SetPauseLabel(false);Sample(0);}
+    public void Replay(){if(time<Duration || exiting || closed)return;time=0;paused=false;ui.SetPauseLabel(false);Sample(0);}
     public void TogglePause(){paused=!paused;ui.SetPauseLabel(paused);}
     void Update()
     {
@@ -68,6 +68,7 @@ public sealed class CinematicMechanicTutorial : MonoBehaviour
     }
     public void Sample(float seconds)
     {
+        ui.play.interactable=ui.replay.interactable=seconds>=Duration;
         bool basic=lesson.key=="BASIC", wrong=!basic && seconds<4;
         float sample=basic?Mathf.Clamp(seconds*1.25f,0,7.5f):wrong?0:Mathf.Clamp((seconds-4)*1.05f,0,7.5f);
         lesson.demonstration.SampleAnimation(owner.presentation,sample);
@@ -137,7 +138,7 @@ public sealed class CinematicMechanicTutorial : MonoBehaviour
         owner.lessonCamera.transform.rotation=Quaternion.Slerp(rotationRest,Quaternion.LookRotation(target-position,stage.up),blend);
         owner.lessonCamera.fieldOfView=Mathf.Lerp(fovRest,48,blend);
     }
-    public void Continue(){if(!neutral&&!closed&&!exiting)StartCoroutine(ReturnToGame());}
+    public void Continue(){if(!neutral&&!closed&&!exiting&&time>=Duration)StartCoroutine(ReturnToGame());}
     IEnumerator ReturnToGame()
     {
         exiting=true;

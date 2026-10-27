@@ -92,8 +92,8 @@ public static partial class BuildToyBoxMainMenu
         timer.localRotation=Quaternion.Euler(12,0,0);
         Box("BirchPlaque",timer,Vector3.zero,new Vector3(2.5f,.92f,.24f),wood,.12f);
         Text("TIME LEFT",timer,new Vector3(0,.24f,-.14f),.20f,ink);
-        hud.timeDigits=Number(timer,new Vector3(0,-.19f,-.15f),2,.36f,ink,hud.digitMeshes);
-        hud.timeFaces=new Renderer[2];for(int i=0;i<2;i++)hud.timeFaces[i]=hud.timeDigits[i].GetComponent<Renderer>();
+        hud.timeDigits=Number(timer,new Vector3(0,-.19f,-.15f),3,.36f,ink,hud.digitMeshes);
+        hud.timeFaces=new Renderer[3];for(int i=0;i<3;i++)hud.timeFaces[i]=hud.timeDigits[i].GetComponent<Renderer>();
         hud.normalTime=ink;hud.urgentTime=coral;
         BuildCleanCabinetFront(root,hud);
         BuildArcadeControlDeck(root,hud);

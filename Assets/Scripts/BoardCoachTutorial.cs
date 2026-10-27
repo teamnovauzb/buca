@@ -27,7 +27,7 @@ public sealed class BoardCoachTutorial : MonoBehaviour
     public LineRenderer demoGuide;
     Renderer[] _originals;
     bool[] _enabled;
-    Vector3 _start, _goal, _shootRest;
+    Vector3 _start, _goal, _shootRest, _shadowScale;
     Quaternion _stickRest;
     LineRenderer _guide;
     Action _finished;
@@ -98,7 +98,10 @@ public sealed class BoardCoachTutorial : MonoBehaviour
     Vector3 _cameraPosition, _honey;
     Quaternion _cameraRotation;
     float _cameraFov;
-    float Duration => 6f;
+    float Duration => Mathf.Max(6f, 2f + Mathf.Max(0, _path.Length - 1) * Time.fixedDeltaTime + .6f);
+    bool _pathEndsInGoal;
+    float _basicPower = .65f;
+    public bool DemonstrationComplete => _time >= Duration;
     string _mechanic="MUD";
     GameObject _levelRoot;
     Transform _mechanicTarget;
@@ -139,6 +142,7 @@ public sealed class BoardCoachTutorial : MonoBehaviour
     {
 
         IsActive=true; _neutral=true; group.alpha=0;
+        BoardMechanicClock.BeginPlayback();
         var continueLabel=play.GetComponentInChildren<TMP_Text>(true);
         if(continueLabel!=null)continueLabel.text=HasNextLesson?"NEXT LESSON":"YOUR TURN";
         _hud=FindAnyObjectByType<ToyBoxGameplayHud>(FindObjectsInactive.Include);
@@ -150,6 +154,7 @@ public sealed class BoardCoachTutorial : MonoBehaviour
         }
         _puckBody=_manager.puck.GetComponent<Rigidbody>();
         if(_puckBody!=null){_savedDetectCollisions=_puckBody.detectCollisions;_puckBody.detectCollisions=false;}
+        if(_manager.puckShadow!=null)_shadowScale=_manager.puckShadow.localScale;
         _start=_manager.puck.transform.position;
         _goal=_manager.GetCurrentHolePosition(); _goal.y=_start.y;
         _honey=Vector3.Lerp(_start,_goal,.3f);
@@ -181,7 +186,32 @@ public sealed class BoardCoachTutorial : MonoBehaviour
         _guide=demoGuide;_guideObject=_guide.gameObject;
         _guideObject.SetActive(true);_guide.positionCount=2;
         replay.onClick.AddListener(Replay);play.onClick.AddListener(Continue);pause.onClick.AddListener(TogglePause);
+        PrepareBasicDemonstration();
         Sample(0);
+    }
+    void PrepareBasicDemonstration()
+    {
+        if(_mechanic!="BASIC")return;
+        var controller=_manager.puck.GetComponent<PuckController>();
+        if(controller==null)return;
+        Vector3 direction=_goal-_start;direction.y=0;
+        BoardMechanicClock.SetPlaybackTime(2f);
+        // Choose a reachable shot before showing its charge. Account for the
+        // moving flag at launch time, and replay this same timeline on request.
+        try
+        {
+            for(int i=0;i<10;i++)
+                for(int j=0;j<7;j++)
+                {
+                    float power=Mathf.Min(1f,.46f+i*.06f);
+                    float yaw=j==0?0:((j+1)/2)*3*(j%2==1?1:-1);
+                    var path=controller.GetTutorialPath(Quaternion.Euler(0,yaw,0)*direction,power);
+                    if(!controller.TutorialPathEndsInGoal)continue;
+                    _path=path;_pathPhase=0;_pathEndsInGoal=true;_basicPower=power;
+                    return;
+                }
+        }
+        finally{BoardMechanicClock.SetPlaybackTime(0);}
     }
     void BeginReplayReset()
     {
@@ -190,7 +220,7 @@ public sealed class BoardCoachTutorial : MonoBehaviour
         _resetScale=_ghost.transform.localScale;
         _resetting=true;
     }
-    public void Replay(){if(_returning)return;BeginReplayReset();_pathPhase=-1;_time=0;Paused=false;BoardMechanicClock.SetPaused(false);SetPauseLabel(false);Sample(0);}
+    public void Replay(){if(_returning || !DemonstrationComplete)return;BeginReplayReset();if(_mechanic!="BASIC" || !_pathEndsInGoal)_pathPhase=-1;_time=0;Paused=false;BoardMechanicClock.SetPaused(false);SetPauseLabel(false);Sample(0);}
     public void TogglePause(){if(_returning)return;Paused=!Paused;BoardMechanicClock.SetPaused(Paused);SetPauseLabel(Paused);}
     void Update()
     {
@@ -258,15 +288,18 @@ public sealed class BoardCoachTutorial : MonoBehaviour
     }
     public void Sample(float t)
     {
+        replay.interactable=play.interactable=t>=Duration;
         bool basic=_mechanic=="BASIC";
         // One complete demonstration per play. Replay is exclusively player-driven.
         t=Mathf.Clamp(t,0,Duration);
         float local=t;
+        BoardMechanicClock.SetPlaybackTime(t);
         float power=basic?.65f:_mechanic=="PEGS"?1f:.9f;
         float yaw=0;
         var setup=_levelRoot!=null?_levelRoot.GetComponent<TutorialShotSetup>():null;
         if(setup!=null && setup.TryGet(_mechanic,out var shot))
         {power=basic?shot.firstPower:shot.secondPower;yaw=shot.yaw;}
+        if(basic && _pathEndsInGoal)power=_basicPower;
         charge.fillAmount=Mathf.Clamp01((local-.8f)/1.2f)*power;
         charge.color=selected;progress.fillAmount=t/Duration;
         caption.text=basic?(t<1?"AIM WITH THE JOYSTICK":t<2?"HOLD BLACK TO CHARGE":"RELEASE BLACK — WATCH THE PUCK"):
@@ -299,7 +332,13 @@ public sealed class BoardCoachTutorial : MonoBehaviour
             Vector3 direction=target-_start;direction.y=0;
             direction=Quaternion.Euler(0,yaw,0)*direction;
             var controller=_manager.puck.GetComponent<PuckController>();
-            if(controller!=null)_path=controller.GetTutorialPath(direction,power);
+            if(controller!=null)
+            {
+                BoardMechanicClock.SetPlaybackTime(2f);
+                _path=controller.GetTutorialPath(direction,power);
+                BoardMechanicClock.SetPlaybackTime(t);
+                _pathEndsInGoal=controller.TutorialPathEndsInGoal;
+            }
         }
         _ghost.transform.localScale=Vector3.one;
         if(_path.Length>1 && local>=2)
@@ -327,10 +366,12 @@ public sealed class BoardCoachTutorial : MonoBehaviour
             }
             else _resetting=false;
         }
-        if(_mechanic=="!" && setup!=null && _path.Length>1)
+        if((_pathEndsInGoal || (_mechanic=="!" && setup!=null)) && _path.Length>1)
         {
             float impactTime=2+(_path.Length-1)*Time.fixedDeltaTime;
-            _ghost.transform.localScale=Vector3.one*(1-Mathf.SmoothStep(0,1,Mathf.Clamp01((local-impactTime)/.3f)));
+            float sink=Mathf.SmoothStep(0,1,Mathf.Clamp01((local-impactTime)/.3f));
+            _ghost.transform.localScale=Vector3.one*(1-sink);
+            if(_pathEndsInGoal)_ghost.transform.position+=Vector3.down*(sink*.2f);
         }
         _guide.enabled=local>=2 && local<5.3f && _ghost.transform.localScale.x>.1f;
         _guide.SetPosition(0,_ghost.transform.position+Vector3.up*.08f);
@@ -374,6 +415,7 @@ public sealed class BoardCoachTutorial : MonoBehaviour
         if(_manager.puckShadow!=null && _ghost!=null)
         {
             var shadow=_ghost.transform.position;shadow.y=.015f;_manager.puckShadow.position=shadow;
+            _manager.puckShadow.localScale=_shadowScale*_ghost.transform.localScale.x;
         }
         if(_returning)
         {
@@ -381,8 +423,10 @@ public sealed class BoardCoachTutorial : MonoBehaviour
             _camera.transform.position=Vector3.Lerp(_returnCameraPosition,_cameraPosition,k);
             _camera.transform.rotation=Quaternion.Slerp(_returnCameraRotation,_cameraRotation,k);
             _camera.fieldOfView=Mathf.Lerp(_returnFov,_cameraFov,k);
-            _ghost.transform.position=Vector3.Lerp(_returnPuckPosition,_start,k);
-            _ghost.transform.localScale=Vector3.Lerp(_returnPuckScale,Vector3.one,k);
+            // Fade out, reset invisibly, then reveal at the start. Never sweep
+            // the demonstration puck back through the flag or board obstacles.
+            _ghost.transform.position=k<.5f?_returnPuckPosition:_start;
+            _ghost.transform.localScale=k<.5f?_returnPuckScale*(1-k*2):Vector3.one*((k-.5f)*2);
             group.alpha=1-k;
             // The gameplay deck stays hidden through every lesson handoff.
             // The HUD reveals it only once the manager enables gameplay.
@@ -403,7 +447,7 @@ public sealed class BoardCoachTutorial : MonoBehaviour
     }
     public void Continue()
     {
-        if(_neutral || _closing || _returning)return;
+        if(_neutral || _closing || _returning || !DemonstrationComplete)return;
         if(_camera==null || _ghost==null)return;
         _returning=true;_returnTime=0;
         group.interactable=false;_guide.enabled=false;
@@ -412,9 +456,11 @@ public sealed class BoardCoachTutorial : MonoBehaviour
     }
     void Restore()
     {
+        BoardMechanicClock.EndPlayback();
         BoardMechanicClock.SetPaused(false);
         IsActive=false;
         if(_puckBody!=null)_puckBody.detectCollisions=_savedDetectCollisions;
+        if(_manager!=null && _manager.puckShadow!=null)_manager.puckShadow.localScale=_shadowScale;
         if(_camera!=null){_camera.transform.SetPositionAndRotation(_cameraPosition,_cameraRotation);_camera.fieldOfView=_cameraFov;}
         if(_originals!=null)for(int i=0;i<_originals.Length;i++)if(_originals[i]!=null)_originals[i].enabled=_enabled[i];
         if(_hud!=null)

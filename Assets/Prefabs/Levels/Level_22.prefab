@@ -1651,7 +1651,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MovingWall
   axis: {x: 1, y: 0, z: 0}
   distance: 2.6
-  cycleSeconds: 5.444444
+  cycleSeconds: 4.4
   phase: 0
 --- !u!114 &2774152072152443961
 MonoBehaviour:
@@ -2605,12 +2605,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ecb669e9594e44aad80fff25de3f5283, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelDifficultyProfile
-  balanceVersion: 5
+  balanceVersion: 6
   levelNumber: 22
   chapter: 4
   difficultyRating: 4
   difficultyIndex: 22
-  mechanicHint: Time offset gates while staying away from the side hazards.
+  mechanicHint: Two quicker gates open at different times instead of moving together.
 --- !u!1 &7455386239857595586
 GameObject:
   m_ObjectHideFlags: 0
@@ -3039,8 +3039,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MovingWall
   axis: {x: 1, y: 0, z: 0}
   distance: 2.6
-  cycleSeconds: 5.444444
-  phase: 1
+  cycleSeconds: 4.9
+  phase: 0.35
 --- !u!114 &2571664796298846501
 MonoBehaviour:
   m_ObjectHideFlags: 0
