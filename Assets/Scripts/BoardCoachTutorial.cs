@@ -144,7 +144,7 @@ public sealed class BoardCoachTutorial : MonoBehaviour
         IsActive=true; _neutral=true; group.alpha=0;
         BoardMechanicClock.BeginPlayback();
         var continueLabel=play.GetComponentInChildren<TMP_Text>(true);
-        if(continueLabel!=null)continueLabel.text=HasNextLesson?"NEXT LESSON":"YOUR TURN";
+        if(continueLabel!=null)continueLabel.text="YOUR TURN";
         _hud=FindAnyObjectByType<ToyBoxGameplayHud>(FindObjectsInactive.Include);
         if(_hud!=null)
         {
@@ -227,7 +227,7 @@ public sealed class BoardCoachTutorial : MonoBehaviour
         if(_closing || _externalPlayback)return;
         if(_returning)
         {
-            _returnTime=Mathf.Min(1,_returnTime+Time.unscaledDeltaTime);
+            _returnTime=Mathf.Min(1,_returnTime+Time.unscaledDeltaTime/.25f);
             // Release the confirm press before enabling gameplay or a queued lesson.
             if(_returnTime>=1 && ControlsReleased)
             {
@@ -288,7 +288,8 @@ public sealed class BoardCoachTutorial : MonoBehaviour
     }
     public void Sample(float t)
     {
-        replay.interactable=play.interactable=t>=Duration;
+        replay.interactable=t>=Duration;
+        play.interactable=!_neutral&&!_returning&&!_closing;
         bool basic=_mechanic=="BASIC";
         // One complete demonstration per play. Replay is exclusively player-driven.
         t=Mathf.Clamp(t,0,Duration);
@@ -304,7 +305,7 @@ public sealed class BoardCoachTutorial : MonoBehaviour
         charge.color=selected;progress.fillAmount=t/Duration;
         caption.text=basic?(t<1?"AIM WITH THE JOYSTICK":t<2?"HOLD BLACK TO CHARGE":"RELEASE BLACK — WATCH THE PUCK"):
             local<2?"WATCH HOW THIS MECHANIC WORKS":MechanicCaption();
-        if(t>=Duration)caption.text=HasNextLesson?"READY FOR THE NEXT LESSON":"YOUR TURN — TRY IT ON THIS BOARD";
+        if(t>=Duration)caption.text="YOUR TURN — TRY IT ON THIS BOARD";
         string status=Paused?"PAUSED":t>=Duration?"READY":"WATCH";
         clock.text=woodenConsole ? $"LESSON {LessonNumber} OF {LessonCount}     |     0:{Mathf.FloorToInt(t):00} / 0:{Duration:00}" : $"{LessonNumber}/{LessonCount}  {status}  0:{Mathf.FloorToInt(t):00} / 0:{Duration:00}";
         if(_ghost==null)return;
@@ -447,7 +448,7 @@ public sealed class BoardCoachTutorial : MonoBehaviour
     }
     public void Continue()
     {
-        if(_neutral || _closing || _returning || !DemonstrationComplete)return;
+        if(_neutral || _closing || _returning)return;
         if(_camera==null || _ghost==null)return;
         _returning=true;_returnTime=0;
         group.interactable=false;_guide.enabled=false;

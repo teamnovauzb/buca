@@ -171,11 +171,13 @@ public sealed class ObstacleIntroController : MonoBehaviour
                 {
                     PlayerPrefs.SetInt(SeenKey(key), 1);
                     PlayerPrefs.Save();
+                    // Your Turn ends this level's introduction, including queued lessons.
+                    next = lessons.Length;
                     advance();
                 };
                 // Keep every lesson on this level, with the real puck appearance and camera.
                 if (BoardCoachTutorial.TryShow(levelRoot, key, completed, next, lessons.Length)) return;
-                watchCopy.Begin(new[] { key }, advance, seen =>
+                watchCopy.Begin(new[] { key }, () => { next = lessons.Length; advance(); }, seen =>
                 {
                     PlayerPrefs.SetInt(SeenKey(seen), 1);
                     PlayerPrefs.Save();

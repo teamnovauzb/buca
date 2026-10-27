@@ -68,7 +68,8 @@ public sealed class CinematicMechanicTutorial : MonoBehaviour
     }
     public void Sample(float seconds)
     {
-        ui.play.interactable=ui.replay.interactable=seconds>=Duration;
+        ui.replay.interactable=seconds>=Duration;
+        ui.play.interactable=!neutral&&!closed&&!exiting;
         bool basic=lesson.key=="BASIC", wrong=!basic && seconds<4;
         float sample=basic?Mathf.Clamp(seconds*1.25f,0,7.5f):wrong?0:Mathf.Clamp((seconds-4)*1.05f,0,7.5f);
         lesson.demonstration.SampleAnimation(owner.presentation,sample);
@@ -138,13 +139,13 @@ public sealed class CinematicMechanicTutorial : MonoBehaviour
         owner.lessonCamera.transform.rotation=Quaternion.Slerp(rotationRest,Quaternion.LookRotation(target-position,stage.up),blend);
         owner.lessonCamera.fieldOfView=Mathf.Lerp(fovRest,48,blend);
     }
-    public void Continue(){if(!neutral&&!closed&&!exiting&&time>=Duration)StartCoroutine(ReturnToGame());}
+    public void Continue(){if(!neutral&&!closed&&!exiting)StartCoroutine(ReturnToGame());}
     IEnumerator ReturnToGame()
     {
         exiting=true;
         var camera=owner.lessonCamera;
         Vector3 position=camera.transform.position;Quaternion rotation=camera.transform.rotation;float fov=camera.fieldOfView;
-        for(float t=0;t<1;t+=Time.unscaledDeltaTime/.55f)
+        for(float t=0;t<1;t+=Time.unscaledDeltaTime/.25f)
         {
             float ease=Mathf.SmoothStep(0,1,t);
             camera.transform.position=Vector3.Lerp(position,cameraRest,ease);
